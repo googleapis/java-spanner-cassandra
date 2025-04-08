@@ -25,6 +25,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 8
+      - name: Install project # remove after release version of google-cloud-spanner-cassandra is on Maven Central
+        run: mvn --quiet --batch-mode install -DskipTests
       - name: Run sample tests
         run: mvn --quiet --batch-mode test
         working-directory: samples/snippets
