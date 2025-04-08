@@ -66,7 +66,9 @@ public final class AdapterClientWrapperTest {
   @Test
   public void sendGrpcRequest_SuccessfulResponse() {
     byte[] payload = "test payload".getBytes();
-    Map<String, String> stateUpdates = Map.of("k1", "v1", "k2", "v2");
+    Map<String, String> stateUpdates = new HashMap<>();
+    stateUpdates.put("k1", "v1");
+    stateUpdates.put("k2", "v2");
     AdaptMessageResponse mockResponse =
         AdaptMessageResponse.newBuilder()
             .setPayload(ByteString.copyFromUtf8("test response"))
@@ -106,7 +108,7 @@ public final class AdapterClientWrapperTest {
     Optional<byte[]> response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>());
 
     verify(mockCallable).call(expectedRequest);
-    assertThat(response.isEmpty());
+    assertThat(!response.isPresent());
   }
 
   @Test

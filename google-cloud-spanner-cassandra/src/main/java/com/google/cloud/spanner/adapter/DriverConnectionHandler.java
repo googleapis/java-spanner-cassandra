@@ -113,7 +113,7 @@ final class DriverConnectionHandler implements Runnable {
         responseOptional = tryPrepareCassandraAttachments(attachments, payload);
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-        if (responseOptional.isEmpty()) {
+        if (!responseOptional.isPresent()) {
           responseOptional = adapterClientWrapper.sendGrpcRequest(payload, attachments);
           // Now responseOptional holds the gRPC result, which might still be empty.
         }
@@ -146,10 +146,45 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
+  private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)
+      throws IOException {
+    if (off < 0 || len < 0 || len > b.length - off) {
+      throw new IndexOutOfBoundsException(
+          String.format("offset %d, length %d, buffer length %d", off, len, b.length));
+    }
+
+    if (len == 0) {
+      return 0;
+    }
+
+    int totalBytesRead = 0;
+    int bytesReadInCurrentLoop;
+
+    // Loop until the desired number of bytes are read or EOF is reached
+    while (totalBytesRead < len) {
+      // Calculate how many bytes are still needed
+      int remaining = len - totalBytesRead;
+      // Calculate the current offset in the buffer
+      int currentOffset = off + totalBytesRead;
+
+      // Attempt to read the remaining bytes
+      bytesReadInCurrentLoop = in.read(b, currentOffset, remaining);
+
+      if (bytesReadInCurrentLoop == -1) {
+        // End Of Stream (EOF) reached before 'len' bytes were read.
+        break;
+      }
+
+      totalBytesRead += bytesReadInCurrentLoop;
+    }
+
+    return totalBytesRead;
+  }
+
   private byte[] constructPayload(InputStream socketInputStream)
       throws IOException, IllegalArgumentException {
     byte[] header = new byte[HEADER_LENGTH];
-    int bytesRead = socketInputStream.readNBytes(header, 0, HEADER_LENGTH);
+    int bytesRead = readNBytesJava8(socketInputStream, header, 0, HEADER_LENGTH);
     if (bytesRead == 0) {
       // EOF
       return new byte[0];
@@ -165,7 +200,7 @@ final class DriverConnectionHandler implements Runnable {
     }
 
     byte[] body = new byte[bodyLength];
-    if (socketInputStream.readNBytes(body, 0, bodyLength) < bodyLength) {
+    if (readNBytesJava8(socketInputStream, body, 0, bodyLength) < bodyLength) {
       throw new IllegalArgumentException("Payload is not well formed.");
     }
 

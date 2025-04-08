@@ -41,7 +41,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -71,28 +73,30 @@ public final class DriverConnectionHandlerTest {
   @Test
   public void successfulQueryMessage() throws IOException {
     byte[] validPayload = createQueryMessage();
-    Optional<byte[]> grpcResponse = Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8));
+    Optional<byte[]> grpcResponse =
+        Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any())).thenReturn(grpcResponse);
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
 
-    assertThat(outputStream.toString(StandardCharsets.UTF_8)).isEqualTo("gRPC response");
+    assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
   }
 
   @Test
   public void successfulPrepareMessage() throws IOException {
     byte[] validPayload = createPrepareMessage();
-    Optional<byte[]> grpcResponse = Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8));
+    Optional<byte[]> grpcResponse =
+        Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any())).thenReturn(grpcResponse);
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
 
-    assertThat(outputStream.toString(StandardCharsets.UTF_8)).isEqualTo("gRPC response");
+    assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
   }
 
@@ -100,17 +104,18 @@ public final class DriverConnectionHandlerTest {
   public void successfulExecuteMessage() throws IOException {
     byte[] queryId = {1, 2};
     byte[] validPayload = createExecuteMessage(queryId);
-    Optional<byte[]> grpcResponse = Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8));
+    Optional<byte[]> grpcResponse =
+        Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any())).thenReturn(grpcResponse);
     AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
-    AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8), "query");
+    AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8.name()), "query");
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
 
-    assertThat(outputStream.toString(StandardCharsets.UTF_8)).isEqualTo("gRPC response");
+    assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
   }
 
@@ -135,17 +140,18 @@ public final class DriverConnectionHandlerTest {
   public void successfulBatchMessage() throws IOException {
     byte[] queryId = {1, 2};
     byte[] validPayload = createBatchMessage(queryId);
-    Optional<byte[]> grpcResponse = Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8));
+    Optional<byte[]> grpcResponse =
+        Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any())).thenReturn(grpcResponse);
     AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
-    AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8), "query");
+    AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8.name()), "query");
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
 
-    assertThat(outputStream.toString(StandardCharsets.UTF_8)).isEqualTo("gRPC response");
+    assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
   }
 
@@ -224,16 +230,13 @@ public final class DriverConnectionHandlerTest {
   }
 
   private static byte[] createBatchMessage(byte[] queryId) {
-    return encodeMessage(
-        new Batch(
-            (byte) 1,
-            List.of("a", queryId),
-            List.of(Collections.emptyList(), Collections.emptyList()),
-            0,
-            0,
-            0,
-            null,
-            0));
+    List<Object> queriesOrIds = new ArrayList<>();
+    queriesOrIds.add("a");
+    queriesOrIds.add(queryId);
+    List<List<ByteBuffer>> emptyCollections = new ArrayList<>();
+    emptyCollections.add(Collections.emptyList());
+    emptyCollections.add(Collections.emptyList());
+    return encodeMessage(new Batch((byte) 1, queriesOrIds, emptyCollections, 0, 0, 0, null, 0));
   }
 
   private static byte[] encodeMessage(Message msg) {
