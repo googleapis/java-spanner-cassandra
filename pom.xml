@@ -107,7 +107,6 @@
     <modules>
         <module>google-cloud-spanner-cassandra</module>
         <module>spanner-cassandra-launcher</module>
-        <module>samples</module>
     </modules>
 
     <build>
