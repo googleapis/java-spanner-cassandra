@@ -146,14 +146,15 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
-  private static int readNBytesJava8(InputStream in, byte[] b, int off, int len) throws IOException {
+  private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)
+      throws IOException {
     if (off < 0 || len < 0 || len > b.length - off) {
-        throw new IndexOutOfBoundsException(
-            String.format("offset %d, length %d, buffer length %d", off, len, b.length));
+      throw new IndexOutOfBoundsException(
+          String.format("offset %d, length %d, buffer length %d", off, len, b.length));
     }
 
     if (len == 0) {
-        return 0;
+      return 0;
     }
 
     int totalBytesRead = 0;
@@ -161,20 +162,20 @@ final class DriverConnectionHandler implements Runnable {
 
     // Loop until the desired number of bytes are read or EOF is reached
     while (totalBytesRead < len) {
-        // Calculate how many bytes are still needed
-        int remaining = len - totalBytesRead;
-        // Calculate the current offset in the buffer
-        int currentOffset = off + totalBytesRead;
+      // Calculate how many bytes are still needed
+      int remaining = len - totalBytesRead;
+      // Calculate the current offset in the buffer
+      int currentOffset = off + totalBytesRead;
 
-        // Attempt to read the remaining bytes
-        bytesReadInCurrentLoop = in.read(b, currentOffset, remaining);
+      // Attempt to read the remaining bytes
+      bytesReadInCurrentLoop = in.read(b, currentOffset, remaining);
 
-        if (bytesReadInCurrentLoop == -1) {
-            // End Of Stream (EOF) reached before 'len' bytes were read.
-            break;
-        }
+      if (bytesReadInCurrentLoop == -1) {
+        // End Of Stream (EOF) reached before 'len' bytes were read.
+        break;
+      }
 
-        totalBytesRead += bytesReadInCurrentLoop;
+      totalBytesRead += bytesReadInCurrentLoop;
     }
 
     return totalBytesRead;
