@@ -71,7 +71,7 @@ public final class AdapterTest {
           .thenReturn(mockAdapterClient);
       when(mockAdapterClient.createSession(any())).thenReturn(mockSession);
       ExecutorService mockExecutor = mock(ExecutorService.class);
-      mockedExecutors.when(Executors::newVirtualThreadPerTaskExecutor).thenReturn(mockExecutor);
+      mockedExecutors.when(Executors::newCachedThreadPool).thenReturn(mockExecutor);
 
       adapter.start();
       adapter.stop();

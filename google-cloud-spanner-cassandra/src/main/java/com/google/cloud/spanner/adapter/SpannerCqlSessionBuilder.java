@@ -89,7 +89,9 @@ public final class SpannerCqlSessionBuilder
     try {
       checkAdapterSettings();
     } catch (UnknownHostException | RuntimeException e) {
-      return CompletableFuture.failedFuture(e);
+      CompletableFuture<SpannerCqlSession> exceptionallyCompletedFuture = new CompletableFuture<>();
+      exceptionallyCompletedFuture.completeExceptionally(e);
+      return exceptionallyCompletedFuture;
     }
 
     // Start the Adapter asynchronously.
