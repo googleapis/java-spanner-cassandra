@@ -121,3 +121,19 @@ jobs:
     - run: .kokoro/build.sh
       env:
         JOB_TYPE: clirr
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [11]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{matrix.java}}
+    - run: java -version
+    - run: .kokoro/build.sh
+      env:
+        JOB_TYPE: integration

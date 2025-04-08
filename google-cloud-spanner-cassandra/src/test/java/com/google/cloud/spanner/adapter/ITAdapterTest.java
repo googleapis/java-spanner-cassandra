@@ -40,7 +40,7 @@ import org.junit.Test;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
-public final class AdapterTest {
+public final class ITAdapterTest {
 
   private static final String TEST_DATABASE_URI =
       "projects/test-project/instances/test-instance/databases/test-db";
@@ -48,7 +48,7 @@ public final class AdapterTest {
   private final InetAddress inetAddress;
   private Adapter adapter;
 
-  public AdapterTest() throws UnknownHostException {
+  public ITAdapterTest() throws UnknownHostException {
     inetAddress = InetAddress.getByName("0.0.0.0");
   }
 
