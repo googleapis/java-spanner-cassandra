@@ -71,6 +71,7 @@ For Java applications already using the `cassandra-java-driver` library, integra
 *   Add the dependency to your project's build file:
 
     **Maven:**
+
 <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
     ```xml
     <dependency>
@@ -80,7 +81,9 @@ For Java applications already using the `cassandra-java-driver` library, integra
     </dependency>
     ```
 <!--- {x-version-update-end} -->
+
     **Gradle:**
+
 <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
     ```gradle
     dependencies {
@@ -88,6 +91,7 @@ For Java applications already using the `cassandra-java-driver` library, integra
     }
     ```
 <!--- {x-version-update-end} -->
+
 *  Modify your `CqlSession` creation code. Instead of using `CqlSessionBuilder`, use `SpannerCqlSessionBuilder` and provide the Spanner database URI:
 
     ```java
