@@ -2,7 +2,9 @@
 
 ## Current Released Version in Public Preview
 
+<!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
 Version `0.1.0`
+<!--- {x-version-update-end} -->
 
 ## Introduction
 The **Spanner Cassandra Java Client** is a tool designed to bridge applications written for the Apache Cassandra® database with Google Spanner. With Spanner's native support for the Cassandra v4 wire protocol, this client allows Java applications or even non-Java applications and tools such as `cqlsh`, to connect seamlessly to a Cloud Spanner database.
@@ -70,6 +72,7 @@ For Java applications already using the `cassandra-java-driver` library, integra
 
     **Maven:**
 
+<!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
     ```xml
     <dependency>
         <groupId>com.google.cloud</groupId>
@@ -77,14 +80,17 @@ For Java applications already using the `cassandra-java-driver` library, integra
         <version>0.1.0</version>
     </dependency>
     ```
+<!--- {x-version-update-end} -->
 
     **Gradle:**
 
+<!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
     ```gradle
     dependencies {
         implementation 'com.google.cloud:google-cloud-spanner-cassandra:0.1.0'
     }
     ```
+<!--- {x-version-update-end} -->
 
 *  Modify your `CqlSession` creation code. Instead of using `CqlSessionBuilder`, use `SpannerCqlSessionBuilder` and provide the Spanner database URI:
 
