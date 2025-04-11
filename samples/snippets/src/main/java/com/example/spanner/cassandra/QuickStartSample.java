@@ -17,7 +17,6 @@ limitations under the License.
 package com.example.spanner.cassandra;
 
 // [START spanner_cassandra_quick_start]
-
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
@@ -30,21 +29,19 @@ import java.util.Random;
 
 // This sample assumes your spanner database <my_db> contains a table <users>
 // with the following schema:
-/*
-CREATE TABLE users (
-	id   INT64          OPTIONS (cassandra_type = 'int'),
-	active    BOOL           OPTIONS (cassandra_type = 'boolean'),
-	username  STRING(MAX)    OPTIONS (cassandra_type = 'text'),
-) PRIMARY KEY (id);
-*/
+//
+// CREATE TABLE users (
+//	id   	 	INT64          OPTIONS (cassandra_type = 'int'),
+//	active    	BOOL           OPTIONS (cassandra_type = 'boolean'),
+//	username  	STRING(MAX)    OPTIONS (cassandra_type = 'text'),
+// ) PRIMARY KEY (id);
 class QuickStartSample {
-
   public static void main(String[] args) {
 
     // TODO(developer): Replace these variables before running the sample.
     final String projectId = "my-gcp-project";
     final String instanceId = "my-spanner-instance";
-    final String databaseId = "my_db";
+    final String databaseId = "my-db";
 
     final String databaseUri =
         String.format("projects/%s/instances/%s/databases/%s", projectId, instanceId, databaseId);
@@ -92,5 +89,4 @@ class QuickStartSample {
     }
   }
 }
-
 // [END spanner_cassandra_quick_start]
