@@ -30,13 +30,13 @@ import java.util.Random;
 
 // This sample assumes your spanner database <my_db> contains a table <users>
 // with the following schema:
-/*
-CREATE TABLE users (
-	id   INT64          OPTIONS (cassandra_type = 'int'),
-	active    BOOL           OPTIONS (cassandra_type = 'boolean'),
-	username  STRING(MAX)    OPTIONS (cassandra_type = 'text'),
-) PRIMARY KEY (id);
-*/
+
+// CREATE TABLE users (
+// 	id        INT64          OPTIONS (cassandra_type = 'int'),
+// 	active    BOOL           OPTIONS (cassandra_type = 'boolean'),
+// 	username  STRING(MAX)    OPTIONS (cassandra_type = 'text'),
+// ) PRIMARY KEY (id);
+
 class QuickStartSample {
 
   public static void main(String[] args) {

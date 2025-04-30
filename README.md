@@ -72,7 +72,7 @@ For Java applications already using the `cassandra-java-driver` library, integra
 
     **Maven:**
 
-<!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
+    <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->  
     ```xml
     <dependency>
         <groupId>com.google.cloud</groupId>
@@ -80,17 +80,17 @@ For Java applications already using the `cassandra-java-driver` library, integra
         <version>0.1.0</version>
     </dependency>
     ```
-<!--- {x-version-update-end} -->
+    <!--- {x-version-update-end} -->
 
     **Gradle:**
 
-<!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
+    <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
     ```gradle
     dependencies {
         implementation 'com.google.cloud:google-cloud-spanner-cassandra:0.1.0'
     }
     ```
-<!--- {x-version-update-end} -->
+    <!--- {x-version-update-end} -->
 
 *  Modify your `CqlSession` creation code. Instead of using `CqlSessionBuilder`, use `SpannerCqlSessionBuilder` and provide the Spanner database URI:
 
@@ -122,14 +122,14 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
 
 **Steps:**
 
-*  Clone the repository:
+* Clone the repository:
 
-  ```bash
-  git clone https://github.com/googleapis/java-spanner-cassandra.git
-  cd java-spanner-cassandra
-  ```
+    ```bash
+    git clone https://github.com/googleapis/java-spanner-cassandra.git
+    cd java-spanner-cassandra
+    ```
 
-*  Build the project by running:
+* Build the project by running:
 
     ```bash
     mvn clean install
@@ -139,16 +139,16 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
 
 * Run the jar using the command:
 
-  ```bash
-  java -DdatabaseUri=projects/my-project/instances/my-instance/databases/my-database \
-  -Dhost=127.0.0.1 \
-  -Dport=9042 \
-  -DnumGrpcChannels=4 \
-  -jar path/to/your/spanner-cassandra-launcher.jar
-  ```
+    ```bash
+    java -DdatabaseUri=projects/my-project/instances/my-instance/databases/my-database \
+    -Dhost=127.0.0.1 \
+    -Dport=9042 \
+    -DnumGrpcChannels=4 \
+    -jar path/to/your/spanner-cassandra-launcher.jar
+    ```
 
-  * Replace the value of `-DdatabaseUri` with your Spanner database URI.
-  * You can omit `-Dhost` to use the default `0.0.0.0`, omit `-Dport` to use the default `9042`, and omit `-DnumGrpcChannels` to use the default `4`.
+    * Replace the value of `-DdatabaseUri` with your Spanner database URI.
+    * You can omit `-Dhost` to use the default `0.0.0.0`, omit `-Dport` to use the default `9042`, and omit `-DnumGrpcChannels` to use the default `4`.
 
 ## License
 
