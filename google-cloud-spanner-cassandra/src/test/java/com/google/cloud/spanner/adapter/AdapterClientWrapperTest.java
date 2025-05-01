@@ -30,6 +30,7 @@ import com.google.spanner.adapter.v1.AdaptMessageRequest;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.Session;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -90,6 +91,47 @@ public final class AdapterClientWrapperTest {
     assertThat(response).isEqualTo("test response".getBytes());
     assertThat(attachmentsCache.get("k1")).hasValue("v1");
     assertThat(attachmentsCache.get("k2")).hasValue("v2");
+  }
+
+  @Test
+  public void sendGrpcRequest_MultipleResponses() {
+    byte[] payload = "test payload".getBytes();
+    Map<String, String> stateUpdates1 = new HashMap<>();
+    stateUpdates1.put("k1", "v1");
+    stateUpdates1.put("k2", "v2");
+    AdaptMessageResponse mockResponse1 =
+        AdaptMessageResponse.newBuilder()
+            .setPayload(ByteString.copyFromUtf8(" test response 1"))
+            .putAllStateUpdates(stateUpdates1)
+            .build();
+    Map<String, String> stateUpdates2 = new HashMap<>();
+    stateUpdates2.put("k3", "v3");
+    AdaptMessageResponse mockResponse2 =
+        AdaptMessageResponse.newBuilder()
+            .setPayload(ByteString.copyFromUtf8(" test response 2"))
+            .putAllStateUpdates(stateUpdates2)
+            .build();
+    AdaptMessageResponse mockResponse3 =
+        AdaptMessageResponse.newBuilder()
+            .setPayload(ByteString.copyFromUtf8("test header"))
+            .build();
+    Iterator<AdaptMessageResponse> mockResponseIterator =
+        Arrays.asList(mockResponse1, mockResponse2, mockResponse3).iterator();
+    when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
+    AdaptMessageRequest expectedRequest =
+        AdaptMessageRequest.newBuilder()
+            .setName("test-session")
+            .setProtocol("cassandra")
+            .setPayload(ByteString.copyFrom(payload))
+            .build();
+
+    byte[] response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>()).get();
+
+    verify(mockCallable).call(expectedRequest);
+    assertThat(response).isEqualTo("test header test response 1 test response 2".getBytes());
+    assertThat(attachmentsCache.get("k1")).hasValue("v1");
+    assertThat(attachmentsCache.get("k2")).hasValue("v2");
+    assertThat(attachmentsCache.get("k3")).hasValue("v3");
   }
 
   @Test

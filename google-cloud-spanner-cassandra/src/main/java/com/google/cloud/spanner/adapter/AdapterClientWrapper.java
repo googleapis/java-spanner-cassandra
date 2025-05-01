@@ -25,6 +25,8 @@ import com.google.spanner.adapter.v1.AdaptMessageResponse;
 import com.google.spanner.adapter.v1.AdapterClient;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -61,8 +63,6 @@ final class AdapterClientWrapper {
    *     {@link Optional#empty()} if no response is received.
    */
   Optional<byte[]> sendGrpcRequest(byte[] payload, Map<String, String> attachments) {
-
-    // TODO: Add RLS headers.
     AdaptMessageRequest request =
         AdaptMessageRequest.newBuilder()
             .setName(sessionManager.getSession().getName())
@@ -71,25 +71,37 @@ final class AdapterClientWrapper {
             .setPayload(ByteString.copyFrom(payload))
             .build();
 
-    try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+    List<ByteString> collectedPayloads = new ArrayList<>();
+
+    try {
       ServerStream<AdaptMessageResponse> serverStream =
           adapterClient.adaptMessageCallable().call(request);
-
-      // TODO: Implement response stitching.
       for (AdaptMessageResponse adaptMessageResponse : serverStream) {
         adaptMessageResponse.getStateUpdatesMap().forEach(attachmentsCache::put);
-        outputStream.write(adaptMessageResponse.getPayload().toByteArray());
+        collectedPayloads.add(adaptMessageResponse.getPayload());
       }
-
-      if (outputStream.size() > 0) {
-        return Optional.of(outputStream.toByteArray());
-      }
-    } catch (IOException | RuntimeException e) {
+    } catch (RuntimeException e) {
       // Any error in getting the AdaptMessageResponse should be reported back to the client.
       return Optional.of(serverErrorResponse(e.getMessage()));
     }
 
-    return Optional.empty();
+    if (collectedPayloads.isEmpty()) {
+      return Optional.empty();
+    }
+
+    try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+      final int numPayloads = collectedPayloads.size();
+      // In case of multiple responses, the last response contains the header. So write it first.
+      outputStream.write(collectedPayloads.get(numPayloads - 1).toByteArray());
+
+      // Then write the remaining responses.
+      for (int i = 0; i < numPayloads - 1; i++) {
+        outputStream.write(collectedPayloads.get(i).toByteArray());
+      }
+      return Optional.of(outputStream.toByteArray());
+    } catch (IOException e) {
+      return Optional.of(serverErrorResponse(e.getMessage()));
+    }
   }
 
   AttachmentsCache getAttachmentsCache() {
