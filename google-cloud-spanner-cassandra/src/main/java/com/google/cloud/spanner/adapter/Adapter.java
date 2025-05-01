@@ -17,6 +17,8 @@ package com.google.cloud.spanner.adapter;
 
 import com.google.api.gax.grpc.ChannelPoolSettings;
 import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
+import com.google.api.gax.rpc.FixedHeaderProvider;
+import com.google.api.gax.rpc.HeaderProvider;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
@@ -36,6 +38,7 @@ import org.slf4j.LoggerFactory;
 final class Adapter {
   private static final Logger LOG = LoggerFactory.getLogger(Adapter.class);
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
+  private static final String RESOURCE_PREFIX_HEADER_KEY = "google-cloud-resource-prefix";
   private static final long MAX_GLOBAL_STATE_SIZE = (long) (1e8 / 256); // ~100 MB
   private static final int DEFAULT_CONNECTION_BACKLOG = 50;
 
@@ -79,10 +82,14 @@ final class Adapter {
               .setChannelPoolSettings(ChannelPoolSettings.staticallySized(numGrpcChannels))
               .build();
 
+      HeaderProvider headerProvider =
+          FixedHeaderProvider.create(RESOURCE_PREFIX_HEADER_KEY, databaseUri);
+
       AdapterSettings settings =
           AdapterSettings.newBuilder()
               .setEndpoint(DEFAULT_SPANNER_ENDPOINT)
               .setTransportChannelProvider(channelProvider)
+              .setHeaderProvider(headerProvider)
               .build();
 
       AdapterClient adapterClient = AdapterClient.create(settings);
