@@ -26,6 +26,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
 import com.google.spanner.adapter.v1.CreateSessionRequest;
@@ -63,9 +64,12 @@ public final class AdapterTest {
     try (MockedConstruction<ServerSocket> mockedServerSocketConstruction =
             mockConstruction(ServerSocket.class);
         MockedStatic<Executors> mockedExecutors = mockStatic(Executors.class);
-        MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class)) {
+        MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class);
+        MockedStatic<GoogleCredentials> mockedGoogleCredentials =
+            mockStatic(GoogleCredentials.class)) {
       AdapterClient mockAdapterClient = mock(AdapterClient.class);
       Session mockSession = mock(Session.class);
+      mockedGoogleCredentials.when(GoogleCredentials::getApplicationDefault).thenReturn(null);
       mockedStaticAdapterClient
           .when(() -> AdapterClient.create(any(AdapterSettings.class)))
           .thenReturn(mockAdapterClient);
