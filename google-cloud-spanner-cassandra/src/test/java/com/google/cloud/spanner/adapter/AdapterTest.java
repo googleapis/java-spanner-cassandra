@@ -26,6 +26,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
 import com.google.spanner.adapter.v1.CreateSessionRequest;
@@ -40,7 +41,7 @@ import org.junit.Test;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
-public final class ITAdapterTest {
+public final class AdapterTest {
 
   private static final String TEST_DATABASE_URI =
       "projects/test-project/instances/test-instance/databases/test-db";
@@ -48,7 +49,7 @@ public final class ITAdapterTest {
   private final InetAddress inetAddress;
   private Adapter adapter;
 
-  public ITAdapterTest() throws UnknownHostException {
+  public AdapterTest() throws UnknownHostException {
     inetAddress = InetAddress.getByName("0.0.0.0");
   }
 
@@ -63,9 +64,12 @@ public final class ITAdapterTest {
     try (MockedConstruction<ServerSocket> mockedServerSocketConstruction =
             mockConstruction(ServerSocket.class);
         MockedStatic<Executors> mockedExecutors = mockStatic(Executors.class);
-        MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class)) {
+        MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class);
+        MockedStatic<GoogleCredentials> mockedGoogleCredentials =
+            mockStatic(GoogleCredentials.class)) {
       AdapterClient mockAdapterClient = mock(AdapterClient.class);
       Session mockSession = mock(Session.class);
+      mockedGoogleCredentials.when(GoogleCredentials::getApplicationDefault).thenReturn(null);
       mockedStaticAdapterClient
           .when(() -> AdapterClient.create(any(AdapterSettings.class)))
           .thenReturn(mockAdapterClient);
