@@ -74,7 +74,8 @@ For Java applications already using the `cassandra-java-driver` library, integra
 
     **Maven:**
 
-    <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->  
+    <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
+    <!-- [START spanner_cassandra_maven_dependency] -->
     ```xml
     <dependency>
         <groupId>com.google.cloud</groupId>
@@ -82,16 +83,19 @@ For Java applications already using the `cassandra-java-driver` library, integra
         <version>0.2.0</version>
     </dependency>
     ```
+    <!-- [END spanner_cassandra_maven_dependency] -->
     <!--- {x-version-update-end} -->
 
     **Gradle:**
 
     <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
+    <!-- [START spanner_cassandra_gradle_dependency] -->
     ```gradle
     dependencies {
         implementation 'com.google.cloud:google-cloud-spanner-cassandra:0.2.0'
     }
     ```
+    <!-- [END spanner_cassandra_gradle_dependency] -->
     <!--- {x-version-update-end} -->
 
 *  Modify your `CqlSession` creation code. Instead of using `CqlSessionBuilder`, use `SpannerCqlSessionBuilder` and provide the Spanner database URI:
