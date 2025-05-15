@@ -3,7 +3,7 @@
 ## Current Released Version in Public Preview
 
 <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
-Version `0.2.0`
+Version `0.3.0`
 <!--- {x-version-update-end} -->
 
 ## Introduction
@@ -81,7 +81,7 @@ For Java applications already using the `cassandra-java-driver` library, integra
     <dependency>
         <groupId>com.google.cloud</groupId>
         <artifactId>google-cloud-spanner-cassandra</artifactId>
-        <version>0.2.0</version>
+        <version>0.3.0</version>
     </dependency>
     ```
     <!-- [END spanner_cassandra_maven_dependency] -->
@@ -93,7 +93,7 @@ For Java applications already using the `cassandra-java-driver` library, integra
     <!-- [START spanner_cassandra_gradle_dependency] -->
     ```gradle
     dependencies {
-        implementation 'com.google.cloud:google-cloud-spanner-cassandra:0.2.0'
+        implementation 'com.google.cloud:google-cloud-spanner-cassandra:0.3.0'
     }
     ```
     <!-- [END spanner_cassandra_gradle_dependency] -->
