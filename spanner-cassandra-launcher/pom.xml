@@ -5,21 +5,21 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.google.cloud</groupId>
     <artifactId>spanner-cassandra-launcher</artifactId>
-    <version>0.3.0</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
+    <version>0.3.1-SNAPSHOT</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
     <packaging>jar</packaging>
     <name>Google Cloud Spanner Cassandra Launcher</name>
 
     <parent>
           <groupId>com.google.cloud</groupId>
           <artifactId>google-cloud-spanner-cassandra-parent</artifactId>
-          <version>0.3.0</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
+          <version>0.3.1-SNAPSHOT</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
     </parent>
 
     <dependencies>
         <dependency>
             <groupId>com.google.cloud</groupId>
             <artifactId>google-cloud-spanner-cassandra</artifactId>
-            <version>0.3.0</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
+            <version>0.3.1-SNAPSHOT</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
         </dependency>
     </dependencies>
 
