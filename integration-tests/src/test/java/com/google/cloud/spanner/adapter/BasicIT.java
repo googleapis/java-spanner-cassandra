@@ -26,10 +26,7 @@ import com.google.cloud.spanner.adapter.utils.DatabaseContext;
 import java.util.Random;
 import org.junit.Test;
 
-/**
- * Very basic integration tests that creates a table, inserts some random data and reads and
- * verifies it
- */
+/** Basic integration test that creates a table, inserts some random data, reads and verifies it */
 public class BasicIT extends AbstractIT {
 
   public BasicIT(DatabaseContext db) {
@@ -38,14 +35,12 @@ public class BasicIT extends AbstractIT {
 
   @Test
   public void basicTest() throws Exception {
-
     String ddl =
         "CREATE TABLE users ( "
             + "id        INT64          OPTIONS (cassandra_type = 'int'), "
             + "active    BOOL           OPTIONS (cassandra_type = 'boolean'), "
             + "username  STRING(MAX)    OPTIONS (cassandra_type = 'text'), "
             + ") PRIMARY KEY (id)";
-
     // Change the DDL to match native CQL
     if (db instanceof CassandraContext) {
       ddl =
@@ -56,7 +51,6 @@ public class BasicIT extends AbstractIT {
               + "PRIMARY KEY (id)"
               + ")";
     }
-
     // Create table
     db.executeDdl(ddl);
 
@@ -73,7 +67,6 @@ public class BasicIT extends AbstractIT {
     // Read back the data
     ResultSet rs =
         session.execute("SELECT id, active, username FROM users WHERE id = ?", randomUserId);
-
     Row row = rs.one();
 
     assertThat(row.getInt("id")).isEqualTo(randomUserId);

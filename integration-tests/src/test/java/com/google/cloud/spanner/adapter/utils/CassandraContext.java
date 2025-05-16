@@ -28,7 +28,6 @@ import org.testcontainers.utility.DockerImageName;
  * keyspace.
  */
 public class CassandraContext extends DatabaseContext {
-
   private static final DockerImageName CASSANDRA_IMAGE = DockerImageName.parse("cassandra:latest");
   private static final int PORT = 9042;
   private final String keyspace;
@@ -45,7 +44,6 @@ public class CassandraContext extends DatabaseContext {
   public void initialize() throws Exception {
     try {
       cassandraContainer = new CassandraContainer(CASSANDRA_IMAGE).withExposedPorts(PORT);
-
       cassandraContainer.start();
 
       session =
@@ -61,7 +59,6 @@ public class CassandraContext extends DatabaseContext {
               keyspace);
       session.execute(createKeyspaceCql);
       session.execute("USE " + keyspace);
-
     } catch (Exception e) {
       if (cassandraContainer != null && cassandraContainer.isRunning()) {
         cassandraContainer.stop();
