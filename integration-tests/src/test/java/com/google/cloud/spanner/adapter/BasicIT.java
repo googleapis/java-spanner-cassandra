@@ -21,8 +21,10 @@ import static com.google.common.truth.Truth.assertThat;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
-import com.google.cloud.spanner.adapter.utils.CassandraContext;
+import com.google.cloud.spanner.adapter.utils.ColumnDefinition;
 import com.google.cloud.spanner.adapter.utils.DatabaseContext;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import org.junit.Test;
 
@@ -35,24 +37,12 @@ public class BasicIT extends AbstractIT {
 
   @Test
   public void basicTest() throws Exception {
-    String ddl =
-        "CREATE TABLE users ( "
-            + "id        INT64          OPTIONS (cassandra_type = 'int'), "
-            + "active    BOOL           OPTIONS (cassandra_type = 'boolean'), "
-            + "username  STRING(MAX)    OPTIONS (cassandra_type = 'text'), "
-            + ") PRIMARY KEY (id)";
-    // Change the DDL to match native CQL
-    if (db instanceof CassandraContext) {
-      ddl =
-          "CREATE TABLE users ( "
-              + "id INT, "
-              + "active BOOLEAN, "
-              + "username TEXT, "
-              + "PRIMARY KEY (id)"
-              + ")";
-    }
     // Create table
-    db.executeDdl(ddl);
+    Map<String, ColumnDefinition> columnDefs = new HashMap<>();
+    columnDefs.put("id", new ColumnDefinition("INT64", "INT", true));
+    columnDefs.put("active", new ColumnDefinition("BOOL", "BOOLEAN", false));
+    columnDefs.put("username", new ColumnDefinition("STRING(MAX)", "TEXT", false));
+    db.createTable("users", columnDefs);
 
     final int randomUserId = new Random().nextInt(Integer.MAX_VALUE);
     CqlSession session = db.getSession();

@@ -18,6 +18,9 @@ package com.google.cloud.spanner.adapter.utils;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.testcontainers.cassandra.CassandraContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -76,8 +79,11 @@ public class CassandraContext extends DatabaseContext {
   }
 
   @Override
-  public void executeDdl(String ddl) throws Exception {
-    getSession().execute(ddl);
+  public void createTable(String tableName, Map<String, ColumnDefinition> columnDefs)
+      throws Exception {
+    CqlSession session = getSession();
+    String ddl = generateCassandraDdl(tableName, columnDefs);
+    session.execute(ddl);
   }
 
   @Override
@@ -94,5 +100,25 @@ public class CassandraContext extends DatabaseContext {
         cassandraContainer.close();
       }
     }
+  }
+
+  private static String generateCassandraDdl(
+      String tableName, Map<String, ColumnDefinition> columnDefs) {
+    StringBuilder ddl = new StringBuilder(String.format("CREATE TABLE %s (\n  ", tableName));
+    List<String> pks = new ArrayList<>();
+    List<String> columns = new ArrayList<>();
+    columnDefs.forEach(
+        (colName, colDef) -> {
+          columns.add(String.format("%s %s", colName, colDef.cassandraType));
+          if (colDef.primaryKey) {
+            pks.add(colName);
+          }
+        });
+    ddl.append(String.join(",\n  ", columns));
+    ddl.append(",\n  PRIMARY KEY (");
+    ddl.append(String.join(", ", pks));
+    ddl.append(")\n)");
+
+    return ddl.toString();
   }
 }

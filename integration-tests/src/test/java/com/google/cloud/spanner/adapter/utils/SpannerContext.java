@@ -25,7 +25,10 @@ import com.google.spanner.admin.database.v1.DatabaseName;
 import com.google.spanner.admin.database.v1.InstanceName;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /** Manages connection to a Spanner database using Cassandra endpoint */
@@ -59,10 +62,12 @@ public class SpannerContext extends DatabaseContext {
   }
 
   @Override
-  public void executeDdl(String ddl) throws Exception {
+  public void createTable(String tableName, Map<String, ColumnDefinition> columnDefs)
+      throws Exception {
     if (databaseAdminClient == null) {
       throw new IllegalStateException("initialize() not called.");
     }
+    String ddl = generateSpannerDdl(tableName, columnDefs);
     databaseAdminClient
         .updateDatabaseDdlAsync(databaseName, Collections.singletonList(ddl))
         .get(5, TimeUnit.MINUTES);
@@ -98,5 +103,28 @@ public class SpannerContext extends DatabaseContext {
     if (session != null) {
       session.close();
     }
+  }
+
+  private static String generateSpannerDdl(
+      String tableName, Map<String, ColumnDefinition> columnDefs) {
+    StringBuilder ddl = new StringBuilder(String.format("CREATE TABLE %s (\n  ", tableName));
+    List<String> pks = new ArrayList<>();
+    List<String> columns = new ArrayList<>();
+    columnDefs.forEach(
+        (colName, colDef) -> {
+          columns.add(
+              String.format(
+                  "%s %s OPTIONS (cassandra_type = '%s')",
+                  colName, colDef.spannerType, colDef.cassandraType));
+          if (colDef.primaryKey) {
+            pks.add(colName);
+          }
+        });
+    ddl.append(String.join(",\n  ", columns));
+    ddl.append(") PRIMARY KEY (");
+    ddl.append(String.join(", ", pks));
+    ddl.append(")");
+
+    return ddl.toString();
   }
 }
