@@ -18,7 +18,6 @@ package com.google.cloud.spanner.adapter.utils;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import java.time.format.DateTimeFormatter;
-import java.util.Map;
 
 /**
  * Abstract base class for defining a database context. Each concrete context (Spanner, Cassandra)
@@ -49,9 +48,8 @@ public abstract class DatabaseContext {
   public abstract CqlSession getSession();
 
   /**
-   * Creates the specified table in the database. Each database is responsible for generating its
+   * Creates the specified tables in the database. Each database is responsible for generating its
    * own DDL from the provided column definitions.
    */
-  public abstract void createTable(String tableName, Map<String, ColumnDefinition> columnDefs)
-      throws Exception;
+  public abstract void createTables(TableDefinition... tableDefinitions) throws Exception;
 }

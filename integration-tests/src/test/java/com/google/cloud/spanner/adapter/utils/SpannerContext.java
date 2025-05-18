@@ -26,7 +26,6 @@ import com.google.spanner.admin.database.v1.InstanceName;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -62,15 +61,16 @@ public class SpannerContext extends DatabaseContext {
   }
 
   @Override
-  public void createTable(String tableName, Map<String, ColumnDefinition> columnDefs)
-      throws Exception {
+  public void createTables(TableDefinition... tableDefinitions) throws Exception {
     if (databaseAdminClient == null) {
       throw new IllegalStateException("initialize() not called.");
     }
-    String ddl = generateSpannerDdl(tableName, columnDefs);
-    databaseAdminClient
-        .updateDatabaseDdlAsync(databaseName, Collections.singletonList(ddl))
-        .get(5, TimeUnit.MINUTES);
+    List<String> ddls = new ArrayList<>();
+    for (TableDefinition tableDefinition : tableDefinitions) {
+      ddls.add("DROP TABLE IF EXISTS " + tableDefinition.tableName);
+      ddls.add(generateSpannerDdl(tableDefinition.tableName, tableDefinition.columnDefinitions));
+    }
+    databaseAdminClient.updateDatabaseDdlAsync(databaseName, ddls).get(5, TimeUnit.MINUTES);
   }
 
   @Override

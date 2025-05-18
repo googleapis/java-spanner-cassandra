@@ -79,11 +79,13 @@ public class CassandraContext extends DatabaseContext {
   }
 
   @Override
-  public void createTable(String tableName, Map<String, ColumnDefinition> columnDefs)
-      throws Exception {
+  public void createTables(TableDefinition... tableDefinitions) throws Exception {
     CqlSession session = getSession();
-    String ddl = generateCassandraDdl(tableName, columnDefs);
-    session.execute(ddl);
+    for (TableDefinition tableDefinition : tableDefinitions) {
+      session.execute("DROP TABLE IF EXISTS " + tableDefinition.tableName);
+      session.execute(
+          generateCassandraDdl(tableDefinition.tableName, tableDefinition.columnDefinitions));
+    }
   }
 
   @Override
