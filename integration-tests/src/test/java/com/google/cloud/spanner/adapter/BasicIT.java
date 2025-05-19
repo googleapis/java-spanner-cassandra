@@ -23,7 +23,6 @@ import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.google.cloud.spanner.adapter.utils.ColumnDefinition;
 import com.google.cloud.spanner.adapter.utils.DatabaseContext;
-import com.google.cloud.spanner.adapter.utils.TableDefinition;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -43,7 +42,7 @@ public class BasicIT extends AbstractIT {
     columnDefs.put("id", new ColumnDefinition("INT64", "INT", true));
     columnDefs.put("active", new ColumnDefinition("BOOL", "BOOLEAN", false));
     columnDefs.put("username", new ColumnDefinition("STRING(MAX)", "TEXT", false));
-    db.createTables(new TableDefinition("users", columnDefs));
+    db.createTable("users", columnDefs);
 
     final int randomUserId = new Random().nextInt(Integer.MAX_VALUE);
     CqlSession session = db.getSession();
