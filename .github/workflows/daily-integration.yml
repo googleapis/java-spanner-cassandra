@@ -1,0 +1,27 @@
+name: Daily Integration Tests
+
+on:
+  schedule:
+    - cron: '0 15 * * *' # Runs at 8:00 AM PST daily
+
+jobs:
+  daily_integration_run:
+    uses: ./.github/workflows/integration-tests.yml
+    secrets: inherit
+    
+  notify_on_failure:
+    runs-on: ubuntu-latest
+    needs: daily_integration_run
+    if: failure()
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Daily integration tests failed!',
+              body: `See [failed job](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+            });

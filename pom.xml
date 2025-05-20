@@ -12,7 +12,7 @@
     <groupId>com.google.cloud</groupId>
     <artifactId>google-cloud-spanner-cassandra-parent</artifactId>
     <packaging>pom</packaging>
-    <version>0.2.0</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
+    <version>0.3.1-SNAPSHOT</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
 
     <name>Google Cloud Spanner Cassandra Parent</name>
     <url>https://github.com/googleapis/java-spanner-cassandra</url>
@@ -101,12 +101,18 @@
                 <version>1.4.4</version>
                 <scope>test</scope>
             </dependency>
+            <dependency>
+                <groupId>com.google.cloud</groupId>
+                <artifactId>google-cloud-spanner-cassandra</artifactId>
+                <version>0.3.1-SNAPSHOT</version> <!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
     <modules>
         <module>google-cloud-spanner-cassandra</module>
         <module>spanner-cassandra-launcher</module>
+        <module>integration-tests</module>
     </modules>
 
     <build>

@@ -3,7 +3,7 @@
 ## Current Released Version in Public Preview
 
 <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
-Version `0.2.0`
+Version `0.3.0`
 <!--- {x-version-update-end} -->
 
 ## Introduction
@@ -21,6 +21,7 @@ This client acts as a local tcp proxy, intercepting the raw Cassandra protocol b
 - [Getting started](#getting-started)
   - [In-Process Dependency](#in-process-dependency-recommended)
   - [Sidecar Proxy](#sidecar-proxy)
+- [Supported Cassandra Versions](#supported-cassandra-versions)
 - [License](#license)
 
 ## When to Use Spanner Cassandra Java Client?
@@ -80,7 +81,7 @@ For Java applications already using the `cassandra-java-driver` library, integra
     <dependency>
         <groupId>com.google.cloud</groupId>
         <artifactId>google-cloud-spanner-cassandra</artifactId>
-        <version>0.2.0</version>
+        <version>0.3.0</version>
     </dependency>
     ```
     <!-- [END spanner_cassandra_maven_dependency] -->
@@ -92,7 +93,7 @@ For Java applications already using the `cassandra-java-driver` library, integra
     <!-- [START spanner_cassandra_gradle_dependency] -->
     ```gradle
     dependencies {
-        implementation 'com.google.cloud:google-cloud-spanner-cassandra:0.2.0'
+        implementation 'com.google.cloud:google-cloud-spanner-cassandra:0.3.0'
     }
     ```
     <!-- [END spanner_cassandra_gradle_dependency] -->
@@ -157,6 +158,10 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
 
     * Replace the value of `-DdatabaseUri` with your Spanner database URI.
     * You can omit `-Dhost` to use the default `0.0.0.0`, omit `-Dport` to use the default `9042`, and omit `-DnumGrpcChannels` to use the default `4`.
+
+## Supported Cassandra Versions
+
+By default, Spanner Cassandra client communicates using the [Cassandra 4.0 protocol](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec) and is fully tested and verified with **Cassandra 4.x**, providing complete support. For **Cassandra 3.x**, the client is designed to be compatible and should work seamlessly, though we recommend thorough testing within your specific setup.
 
 ## License
 

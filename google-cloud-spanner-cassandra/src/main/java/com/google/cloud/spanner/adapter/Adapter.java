@@ -41,6 +41,8 @@ final class Adapter {
   private static final String RESOURCE_PREFIX_HEADER_KEY = "google-cloud-resource-prefix";
   private static final long MAX_GLOBAL_STATE_SIZE = (long) (1e8 / 256); // ~100 MB
   private static final int DEFAULT_CONNECTION_BACKLOG = 50;
+  private static final String ENV_VAR_GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS =
+      "GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS";
 
   private final InetAddress inetAddress;
   private final int port;
@@ -76,11 +78,17 @@ final class Adapter {
     try {
       GoogleCredentials credentials = GoogleCredentials.getApplicationDefault();
 
-      InstantiatingGrpcChannelProvider channelProvider =
-          AdapterSettings.defaultGrpcTransportProviderBuilder()
-              .setCredentials(credentials)
-              .setChannelPoolSettings(ChannelPoolSettings.staticallySized(numGrpcChannels))
-              .build();
+      InstantiatingGrpcChannelProvider.Builder channelProviderBuilder =
+          AdapterSettings.defaultGrpcTransportProviderBuilder();
+
+      channelProviderBuilder
+          .setCredentials(credentials)
+          .setChannelPoolSettings(ChannelPoolSettings.staticallySized(numGrpcChannels));
+
+      if (isEnableDirectPathXdsEnv()) {
+        channelProviderBuilder.setAttemptDirectPath(true);
+        channelProviderBuilder.setAttemptDirectPathXds();
+      }
 
       HeaderProvider headerProvider =
           FixedHeaderProvider.create(RESOURCE_PREFIX_HEADER_KEY, databaseUri);
@@ -88,7 +96,7 @@ final class Adapter {
       AdapterSettings settings =
           AdapterSettings.newBuilder()
               .setEndpoint(DEFAULT_SPANNER_ENDPOINT)
-              .setTransportChannelProvider(channelProvider)
+              .setTransportChannelProvider(channelProviderBuilder.build())
               .setHeaderProvider(headerProvider)
               .build();
 
@@ -149,6 +157,10 @@ final class Adapter {
     } catch (IOException e) {
       LOG.error("Error accepting client connection", e);
     }
+  }
+
+  private static boolean isEnableDirectPathXdsEnv() {
+    return Boolean.parseBoolean(System.getenv(ENV_VAR_GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS));
   }
 
   private static final class AdapterStartException extends RuntimeException {

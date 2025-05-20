@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.2.0...v0.3.0) (2025-05-15)
+
+
+### Features
+
+* Add support for direct path ([#30](https://github.com/googleapis/java-spanner-cassandra/issues/30)) ([9dbb0cf](https://github.com/googleapis/java-spanner-cassandra/commit/9dbb0cfa005f7126488a837608cda1250eefff23))
+
+
+### Documentation
+
+* Add comment to automatically update dependencies in spanner docs ([#28](https://github.com/googleapis/java-spanner-cassandra/issues/28)) ([260cb81](https://github.com/googleapis/java-spanner-cassandra/commit/260cb81bbc297cedb4681b7f8838515ed6c01c61))
+
 ## [0.2.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.1.0...v0.2.0) (2025-05-08)
 
 
