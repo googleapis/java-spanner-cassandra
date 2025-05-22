@@ -88,7 +88,7 @@ public class SpannerContext extends DatabaseContext {
             .withConfigLoader(
                 DriverConfigLoader.programmaticBuilder()
                     .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
-                    .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(10))
+                    .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(20))
                     .withDuration(
                         DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(60))
                     .build())

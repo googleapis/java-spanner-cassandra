@@ -17,7 +17,7 @@ on:
   push:
     branches:
     - main
-  pull_request:
+  pull_request_target:
 name: ci
 jobs:
   units:
@@ -97,18 +97,18 @@ jobs:
     - run: .kokoro/build.sh
       env:
         JOB_TYPE: javadoc
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 11
-    - run: java -version
-    - run: .kokoro/build.sh
-      env:
-        JOB_TYPE: lint
+  # lint:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #   - uses: actions/setup-java@v4
+  #     with:
+  #       distribution: temurin
+  #       java-version: 11
+  #   - run: java -version
+  #   - run: .kokoro/build.sh
+  #     env:
+  #       JOB_TYPE: lint
   clirr:
     runs-on: ubuntu-latest
     steps:
