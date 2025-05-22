@@ -16,13 +16,6 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter.utils;
 
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
@@ -30,6 +23,12 @@ import com.google.cloud.spanner.adapter.SpannerCqlSession;
 import com.google.cloud.spanner.admin.database.v1.DatabaseAdminClient;
 import com.google.spanner.admin.database.v1.DatabaseName;
 import com.google.spanner.admin.database.v1.InstanceName;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /** Manages connection to a Spanner database using Cassandra endpoint */
 public class SpannerContext extends DatabaseContext {

@@ -16,15 +16,7 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter.cql;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TestName;
 
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
@@ -34,6 +26,13 @@ import com.google.cloud.spanner.adapter.AbstractIT;
 import com.google.cloud.spanner.adapter.utils.ColumnDefinition;
 import com.google.cloud.spanner.adapter.utils.DatabaseContext;
 import com.google.cloud.spanner.adapter.utils.TableDefinition;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TestName;
 
 public class SimpleStatementIT extends AbstractIT {
   private static final String KEY = "test";
