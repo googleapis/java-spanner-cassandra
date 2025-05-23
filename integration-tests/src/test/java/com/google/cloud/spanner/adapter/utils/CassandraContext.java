@@ -17,6 +17,9 @@ limitations under the License.
 package com.google.cloud.spanner.adapter.utils;
 
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
+import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +56,12 @@ public class CassandraContext extends DatabaseContext {
           CqlSession.builder()
               .addContactPoint(cassandraContainer.getContactPoint())
               .withLocalDatacenter(cassandraContainer.getLocalDatacenter())
+              .withConfigLoader(
+                  DriverConfigLoader.programmaticBuilder()
+                      .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
+                      .withDuration(
+                          DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(30))
+                      .build())
               .build();
 
       String createKeyspaceCql =
