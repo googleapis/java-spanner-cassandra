@@ -43,6 +43,7 @@ final class Adapter {
   private static final int DEFAULT_CONNECTION_BACKLOG = 50;
   private static final String ENV_VAR_GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS =
       "GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS";
+  private static final String ENV_VAR_SPANNER_ENDPOINT = "SPANNER_ENDPOINT";
 
   private final InetAddress inetAddress;
   private final int port;
@@ -93,9 +94,11 @@ final class Adapter {
       HeaderProvider headerProvider =
           FixedHeaderProvider.create(RESOURCE_PREFIX_HEADER_KEY, databaseUri);
 
+      final String env_var_endpoint = System.getenv(ENV_VAR_SPANNER_ENDPOINT);
+
       AdapterSettings settings =
           AdapterSettings.newBuilder()
-              .setEndpoint(DEFAULT_SPANNER_ENDPOINT)
+              .setEndpoint(env_var_endpoint != null ? env_var_endpoint : DEFAULT_SPANNER_ENDPOINT)
               .setTransportChannelProvider(channelProviderBuilder.build())
               .setHeaderProvider(headerProvider)
               .build();

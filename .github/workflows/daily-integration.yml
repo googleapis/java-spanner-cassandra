@@ -5,13 +5,19 @@ on:
     - cron: '0 15 * * *' # Runs at 8:00 AM PST daily
 
 jobs:
-  daily_integration_run:
+  daily_integration_run_prod:
     uses: ./.github/workflows/integration-tests.yml
     secrets: inherit
+  
+  daily_integration_run_devel:
+    uses: ./.github/workflows/integration-tests.yml
+    secrets: inherit
+    env:
+        SPANNER_ENDPOINT: ${{secrets.SPANNER_DEVEL_ENDPOINT}}
     
   notify_on_failure:
     runs-on: ubuntu-latest
-    needs: daily_integration_run
+    needs: [daily_integration_run_prod, daily_integration_run_devel]
     if: failure()
     permissions:
       issues: write
@@ -19,9 +25,19 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: '🚨 Daily integration tests failed!',
-              body: `See [failed job](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
-            });
+            if ('${{ needs.daily_integration_run_prod.result }}' === 'failure') {
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🚨 [PROD] Daily integration tests against prod failed!',
+                body: `See [failed job](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              });
+            }
+            if ('${{ needs.daily_integration_run_devel.result }}' === 'failure') {
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🚨 [DEVEL] Daily integration tests against devel failed!',
+                body: `See [failed job](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              });
+            }
