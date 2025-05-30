@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/googleapis/java-spanner-cassandra/compare/v0.3.0...v0.3.1) (2025-05-30)
+
+
+### Documentation
+
+* Add unsupported features from apache/cassandra-java-driver ([#42](https://github.com/googleapis/java-spanner-cassandra/issues/42)) ([3df0067](https://github.com/googleapis/java-spanner-cassandra/commit/3df00673d3303453d56da99c24f5eb36eae59155))
+
 ## [0.3.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.2.0...v0.3.0) (2025-05-15)
 
 
