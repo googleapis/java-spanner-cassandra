@@ -91,8 +91,8 @@ public class MapCollectionIT extends AbstractIT {
 
   @Test
   public void testInsertAndRetrieveMap() {
-    UUID userId = UUID.randomUUID();
-    String username = "mapuser1";
+    UUID userId = RandomCqlDataGenerator.randomUUID();
+    String username = RandomCqlDataGenerator.randomText(5, 10);
     Map<String, Integer> preferences = new HashMap<>();
     preferences.put("theme", 1);
     preferences.put("fontSize", 14);
@@ -117,8 +117,8 @@ public class MapCollectionIT extends AbstractIT {
 
   @Test
   public void testUpdateSetSingleEntryInMap() {
-    UUID userId = UUID.randomUUID();
-    String username = "mapuser2";
+    UUID userId = RandomCqlDataGenerator.randomUUID();
+    String username = RandomCqlDataGenerator.randomText(5, 10);
     Map<String, Integer> initialPreferences = new HashMap<>();
     initialPreferences.put("volume", 75);
     initialPreferences.put("brightness", 50);
@@ -159,8 +159,8 @@ public class MapCollectionIT extends AbstractIT {
 
   @Test
   public void testUpdateAddAllToMap() {
-    UUID userId = UUID.randomUUID();
-    String username = "mapuser3";
+    UUID userId = RandomCqlDataGenerator.randomUUID();
+    String username = RandomCqlDataGenerator.randomText(5, 10);
     Map<String, Integer> initialPreferences = new HashMap<>();
     initialPreferences.put("settingA", 1);
     initialPreferences.put("settingB", 2);
@@ -186,8 +186,8 @@ public class MapCollectionIT extends AbstractIT {
 
   @Test
   public void testUpdateOverwriteEntireMap() {
-    UUID userId = UUID.randomUUID();
-    String username = "mapuser5";
+    UUID userId = RandomCqlDataGenerator.randomUUID();
+    String username = RandomCqlDataGenerator.randomText(5, 10);
     Map<String, Integer> initialPreferences = new HashMap<>();
     initialPreferences.put("oldKey1", 100);
     initialPreferences.put("oldKey2", 200);
@@ -213,8 +213,8 @@ public class MapCollectionIT extends AbstractIT {
 
   @Test
   public void testInsertWithEmptyMap() {
-    UUID userId = UUID.randomUUID();
-    String username = "emptymapuser";
+    UUID userId = RandomCqlDataGenerator.randomUUID();
+    String username = RandomCqlDataGenerator.randomText(5, 10);
     Map<String, Integer> emptyPreferences = new HashMap<>();
     Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
 
@@ -230,8 +230,8 @@ public class MapCollectionIT extends AbstractIT {
 
   @Test
   public void testInsertWithNullMap() {
-    UUID userId = UUID.randomUUID();
-    String username = "nullmapuser";
+    UUID userId = RandomCqlDataGenerator.randomUUID();
+    String username = RandomCqlDataGenerator.randomText(5, 10);
     Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
 
     // Binding null for the MAP column
