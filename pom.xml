@@ -18,15 +18,33 @@
     <url>https://github.com/googleapis/java-spanner-cassandra</url>
     <description>Cassandra adapter for Google Cloud Spanner.</description>
     <developers>
-        <developer>
-        <id>chingor</id>
-        <name>Jeff Ching</name>
-        <email>chingor@google.com</email>
+      <developer>
+        <id>atharvamoroney</id>
+        <name>Atharva Moroney</name>
+        <email>atharvamoroney@google.com</email>
         <organization>Google</organization>
         <roles>
             <role>Developer</role>
         </roles>
-        </developer>
+      </developer>
+      <developer>
+        <id>shuranzhang</id>
+        <name>Shuran Zhang</name>
+        <email>shuranzhang@google.com</email>
+        <organization>Google</organization>
+        <roles>
+            <role>Developer</role>
+        </roles>
+      </developer>
+      <developer>
+        <id>mayurkale</id>
+        <name>Mayur Kale</name>
+        <email>mayurkale@google.com</email>
+        <organization>Google</organization>
+        <roles>
+            <role>Developer</role>
+        </roles>
+      </developer>
     </developers>
     <organization>
         <name>Google LLC</name>
