@@ -3,6 +3,7 @@ name: Daily Integration Tests
 on:
   schedule:
     - cron: '0 15 * * *' # Runs at 8:00 AM PST daily
+  workflow_dispatch:  # Enable manual runs
 
 jobs:
   daily_integration_run_prod:
