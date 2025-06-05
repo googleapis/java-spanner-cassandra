@@ -9,11 +9,20 @@ jobs:
     uses: ./.github/workflows/integration-tests.yml
     secrets: inherit
   
+  # Because GitHub does not support passing env vars directly to reusable work
+  env_vars_for_devel:
+    runs-on: ubuntu-latest
+    outputs:
+      SPANNER_ENDPOINT: ${{secrets.SPANNER_DEVEL_ENDPOINT}}
+    steps:
+      - run: echo "Exposing env var"
+  
   daily_integration_run_devel:
+    needs: [env_vars_for_devel]
     uses: ./.github/workflows/integration-tests.yml
     secrets: inherit
-    env:
-        SPANNER_ENDPOINT: ${{secrets.SPANNER_DEVEL_ENDPOINT}}
+    with:
+      SPANNER_ENDPOINT: ${{needs.env_vars_for_devel.outputs.SPANNER_ENDPOINT}}
     
   notify_on_failure:
     runs-on: ubuntu-latest
