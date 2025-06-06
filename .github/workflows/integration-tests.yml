@@ -7,6 +7,12 @@ on:
         required: true
       INTEGRATION_TEST_INSTANCE:
         required: true
+    inputs:
+      SPANNER_ENDPOINT:
+        description: 'The Spanner endpoint to target'
+        required: false
+        type: string
+        default: "spanner.googleapis.com:443"
 
 jobs:
   integration:
@@ -29,3 +35,4 @@ jobs:
       env:
         JOB_TYPE: integration
         INTEGRATION_TEST_INSTANCE: ${{secrets.INTEGRATION_TEST_INSTANCE}}
+        SPANNER_ENDPOINT: ${{ inputs.SPANNER_ENDPOINT }}
