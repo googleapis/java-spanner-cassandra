@@ -19,8 +19,9 @@ package com.google.cloud.spanner.adapter;
 import com.google.cloud.spanner.adapter.utils.CassandraContext;
 import com.google.cloud.spanner.adapter.utils.DatabaseContext;
 import com.google.cloud.spanner.adapter.utils.SpannerContext;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.AfterParam;
@@ -47,7 +48,16 @@ public abstract class AbstractIT {
 
   @Parameterized.Parameters(name = "{0}")
   public static Collection<Object[]> databases() {
-    return Arrays.asList(new Object[][] {{new SpannerContext()}, {new CassandraContext()}});
+    final String dbToRun = System.getProperty("backend", "both").toLowerCase();
+
+    List<Object[]> contexts = new ArrayList<>();
+    if (dbToRun.equalsIgnoreCase("spanner") || dbToRun.equalsIgnoreCase("both")) {
+      contexts.add(new Object[] {new SpannerContext()});
+    }
+    if (dbToRun.equalsIgnoreCase("cassandra") || dbToRun.equalsIgnoreCase("both")) {
+      contexts.add(new Object[] {new CassandraContext()});
+    }
+    return contexts;
   }
 
   public AbstractIT(DatabaseContext db) {
