@@ -10,20 +10,28 @@ jobs:
     uses: ./.github/workflows/integration-tests.yml
     secrets: inherit
   
-  # Because GitHub does not support passing env vars directly to reusable work
-  env_vars_for_devel:
-    runs-on: ubuntu-latest
-    outputs:
-      SPANNER_ENDPOINT: ${{secrets.SPANNER_DEVEL_ENDPOINT}}
-    steps:
-      - run: echo "Exposing env var"
-  
+  # Need to rewrite the job here because there is no straightforward way to pass secrests to reusable workflows
   daily_integration_run_devel:
-    needs: [env_vars_for_devel]
-    uses: ./.github/workflows/integration-tests.yml
-    secrets: inherit
-    with:
-      SPANNER_ENDPOINT: ${{needs.env_vars_for_devel.outputs.SPANNER_ENDPOINT}}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [11]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{matrix.java}}
+    - uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.SPANNER_CASSANDRA_ADAPTER_CICD_SERVICE_ACCOUNT }}'
+    - run: java -version
+    - run: .kokoro/build.sh
+      env:
+        JOB_TYPE: integration
+        INTEGRATION_TEST_INSTANCE: ${{secrets.INTEGRATION_TEST_INSTANCE}}
+        SPANNER_ENDPOINT: ${{secrets.SPANNER_DEVEL_ENDPOINT}}
     
   notify_on_failure:
     runs-on: ubuntu-latest
