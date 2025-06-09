@@ -102,7 +102,8 @@ public class CassandraContext extends DatabaseContext {
         session.close();
       }
     } finally {
-      // DO nothing.
+      // Do nothing.
+      // JVM should stop the container upon existing.
     }
   }
 
