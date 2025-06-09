@@ -36,8 +36,10 @@ public class CassandraContext extends DatabaseContext {
   private static final DockerImageName CASSANDRA_IMAGE = DockerImageName.parse("cassandra:latest");
   private static final int PORT = 9042;
 
-  private CassandraContainer cassandraContainer;
   private CqlSession session;
+
+  private static final CassandraContainer cassandraContainer =
+      new CassandraContainer(CASSANDRA_IMAGE).withExposedPorts(PORT);
 
   public CassandraContext() {
     super("Cassandra");
@@ -46,9 +48,7 @@ public class CassandraContext extends DatabaseContext {
   @Override
   public void initialize() throws Exception {
     try {
-      cassandraContainer = new CassandraContainer(CASSANDRA_IMAGE).withExposedPorts(PORT);
       cassandraContainer.start();
-
       session =
           CqlSession.builder()
               .addContactPoint(cassandraContainer.getContactPoint())
@@ -56,8 +56,9 @@ public class CassandraContext extends DatabaseContext {
               .withConfigLoader(
                   DriverConfigLoader.programmaticBuilder()
                       .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
+                      .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofMinutes(5))
                       .withDuration(
-                          DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(30))
+                          DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofMinutes(5))
                       .build())
               .build();
 
@@ -101,12 +102,7 @@ public class CassandraContext extends DatabaseContext {
         session.close();
       }
     } finally {
-      if (cassandraContainer != null) {
-        if (cassandraContainer.isRunning()) {
-          cassandraContainer.stop();
-        }
-        cassandraContainer.close();
-      }
+      // DO nothing.
     }
   }
 

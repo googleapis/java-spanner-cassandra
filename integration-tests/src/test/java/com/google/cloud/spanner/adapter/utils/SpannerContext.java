@@ -19,10 +19,16 @@ package com.google.cloud.spanner.adapter.utils;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
+import com.datastax.oss.driver.api.core.metadata.EndPoint;
+import com.datastax.oss.driver.internal.core.metadata.DefaultEndPoint;
 import com.google.cloud.spanner.adapter.SpannerCqlSession;
 import com.google.cloud.spanner.admin.database.v1.DatabaseAdminClient;
 import com.google.spanner.admin.database.v1.DatabaseName;
 import com.google.spanner.admin.database.v1.InstanceName;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -73,6 +79,13 @@ public class SpannerContext extends DatabaseContext {
     databaseAdminClient.updateDatabaseDdlAsync(databaseName, ddls).get(5, TimeUnit.MINUTES);
   }
 
+  private int findFreePort() throws IOException {
+    try (ServerSocket socket = new ServerSocket(0)) { // 0 finds any available system port
+      socket.setReuseAddress(true); // Optional: helps in quickly rebinding if needed
+      return socket.getLocalPort();
+    }
+  }
+
   @Override
   public void initialize() throws Exception {
     databaseAdminClient = DatabaseAdminClient.create();
@@ -81,16 +94,21 @@ public class SpannerContext extends DatabaseContext {
         .createDatabaseAsync(instanceName, "CREATE DATABASE " + databaseId)
         .get(5, TimeUnit.MINUTES);
 
+    EndPoint adapterEndpoint =
+        new DefaultEndPoint(
+            new InetSocketAddress(InetAddress.getLoopbackAddress(), findFreePort()));
+
     session =
         SpannerCqlSession.builder()
             .setDatabaseUri(databaseName.toString())
-            .withKeyspace(databaseId)
+            .addContactEndPoint(adapterEndpoint) // Configures the internal adapter's port
+            .withLocalDatacenter("datacenter1")
             .withConfigLoader(
                 DriverConfigLoader.programmaticBuilder()
                     .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
-                    .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(20))
+                    .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofMinutes(5))
                     .withDuration(
-                        DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(60))
+                        DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofMinutes(5))
                     .build())
             .build();
   }
