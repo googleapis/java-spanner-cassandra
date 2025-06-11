@@ -23,6 +23,7 @@ import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.internal.core.metadata.DefaultEndPoint;
 import com.google.cloud.spanner.adapter.SpannerCqlSession;
 import com.google.cloud.spanner.admin.database.v1.DatabaseAdminClient;
+import com.google.cloud.spanner.admin.database.v1.DatabaseAdminSettings;
 import com.google.spanner.admin.database.v1.DatabaseName;
 import com.google.spanner.admin.database.v1.InstanceName;
 import java.io.IOException;
@@ -41,6 +42,8 @@ public class SpannerContext extends DatabaseContext {
 
   private static final InstanceName instanceName =
       InstanceName.parse(System.getenv("INTEGRATION_TEST_INSTANCE"));
+  private static final String ENV_VAR_SPANNER_ENDPOINT = "SPANNER_ENDPOINT";
+  private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
 
   private final String databaseId;
   private final DatabaseName databaseName;
@@ -88,7 +91,12 @@ public class SpannerContext extends DatabaseContext {
 
   @Override
   public void initialize() throws Exception {
-    databaseAdminClient = DatabaseAdminClient.create();
+    final String env_var_endpoint = System.getenv(ENV_VAR_SPANNER_ENDPOINT);
+    DatabaseAdminSettings settings =
+        DatabaseAdminSettings.newBuilder()
+            .setEndpoint(env_var_endpoint != null ? env_var_endpoint : DEFAULT_SPANNER_ENDPOINT)
+            .build();
+    databaseAdminClient = DatabaseAdminClient.create(settings);
 
     databaseAdminClient
         .createDatabaseAsync(instanceName, "CREATE DATABASE " + databaseId)
