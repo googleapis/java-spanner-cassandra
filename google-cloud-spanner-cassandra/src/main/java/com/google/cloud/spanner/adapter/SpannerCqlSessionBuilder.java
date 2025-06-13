@@ -19,6 +19,7 @@ package com.google.cloud.spanner.adapter;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.session.SessionBuilder;
+import com.google.cloud.spanner.adapter.opentelemetry.BuiltInRequestTracker;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -72,6 +73,16 @@ public final class SpannerCqlSessionBuilder
 
   public SpannerCqlSessionBuilder setNumGrpcChannels(int numGrpcChannels) {
     this.numGrpcChannels = numGrpcChannels;
+    return this;
+  }
+
+  /**
+   * Sets whether to enable or disable built in metrics. Built in metrics are disabled by default.
+   */
+  public SpannerCqlSessionBuilder setBuiltInMetricsEnabled(boolean enableBuiltInMetrics) {
+    if (enableBuiltInMetrics) {
+      this.addRequestTracker(BuiltInRequestTracker.INSTANCE);
+    }
     return this;
   }
 
