@@ -35,6 +35,8 @@ import com.datastax.oss.protocol.internal.request.Execute;
 import com.datastax.oss.protocol.internal.request.Prepare;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.datastax.oss.protocol.internal.request.query.QueryOptions;
+import com.google.api.gax.rpc.ApiCallContext;
+import com.google.common.collect.ImmutableList;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import java.io.ByteArrayInputStream;
@@ -49,6 +51,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 
 public final class DriverConnectionHandlerTest {
 
@@ -56,6 +59,8 @@ public final class DriverConnectionHandlerTest {
   private static final FrameCodec<ByteBuf> clientFrameCodec =
       FrameCodec.defaultClient(
           new ByteBufPrimitiveCodec(ByteBufAllocator.DEFAULT), Compressor.none());
+  private static final ArgumentCaptor<ApiCallContext> contextCaptor =
+      ArgumentCaptor.forClass(ApiCallContext.class);
   private AdapterClientWrapper mockAdapterClient;
   private Socket mockSocket;
   private ByteArrayOutputStream outputStream;
@@ -76,13 +81,35 @@ public final class DriverConnectionHandlerTest {
     Optional<byte[]> grpcResponse =
         Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
-    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any())).thenReturn(grpcResponse);
+    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any()))
+        .thenReturn(grpcResponse);
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
+    verify(mockAdapterClient).sendGrpcRequest(any(), any(), contextCaptor.capture());
+    assertThat(contextCaptor.getValue().getExtraHeaders()).isEmpty();
+  }
+
+  @Test
+  public void successfulDmlQueryMessage() throws IOException {
+    byte[] validPayload = createDmlQueryMessage();
+    Optional<byte[]> grpcResponse =
+        Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
+    when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
+    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any()))
+        .thenReturn(grpcResponse);
+
+    DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
+    handler.run();
+
+    assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
+    verify(mockSocket).close();
+    verify(mockAdapterClient).sendGrpcRequest(any(), any(), contextCaptor.capture());
+    assertThat(contextCaptor.getValue().getExtraHeaders())
+        .containsExactly("x-goog-spanner-route-to-leader", ImmutableList.of("true"));
   }
 
   @Test
@@ -91,13 +118,16 @@ public final class DriverConnectionHandlerTest {
     Optional<byte[]> grpcResponse =
         Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
-    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any())).thenReturn(grpcResponse);
+    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any()))
+        .thenReturn(grpcResponse);
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
+    verify(mockAdapterClient).sendGrpcRequest(any(), any(), contextCaptor.capture());
+    assertThat(contextCaptor.getValue().getExtraHeaders()).isEmpty();
   }
 
   @Test
@@ -107,7 +137,8 @@ public final class DriverConnectionHandlerTest {
     Optional<byte[]> grpcResponse =
         Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
-    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any())).thenReturn(grpcResponse);
+    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any()))
+        .thenReturn(grpcResponse);
     AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
     AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8.name()), "query");
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
@@ -117,6 +148,32 @@ public final class DriverConnectionHandlerTest {
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
+    verify(mockAdapterClient).sendGrpcRequest(any(), any(), contextCaptor.capture());
+    assertThat(contextCaptor.getValue().getExtraHeaders()).isEmpty();
+  }
+
+  @Test
+  public void successfulDmlExecuteMessage() throws IOException {
+    // Add the `W` prefix to indicate that this query originates from a prepared DML statement.
+    byte[] queryId = "W123".getBytes();
+    byte[] validPayload = createExecuteMessage(queryId);
+    Optional<byte[]> grpcResponse =
+        Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
+    when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
+    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any()))
+        .thenReturn(grpcResponse);
+    AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
+    AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8.name()), "query");
+    when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
+
+    DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
+    handler.run();
+
+    assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
+    verify(mockSocket).close();
+    verify(mockAdapterClient).sendGrpcRequest(any(), any(), contextCaptor.capture());
+    assertThat(contextCaptor.getValue().getExtraHeaders())
+        .containsExactly("x-goog-spanner-route-to-leader", ImmutableList.of("true"));
   }
 
   @Test
@@ -132,7 +189,7 @@ public final class DriverConnectionHandlerTest {
     handler.run();
 
     assertThat(outputStream.toByteArray()).isEqualTo(response);
-    verify(mockAdapterClient, never()).sendGrpcRequest(any(), any());
+    verify(mockAdapterClient, never()).sendGrpcRequest(any(), any(), any());
     verify(mockSocket).close();
   }
 
@@ -143,7 +200,8 @@ public final class DriverConnectionHandlerTest {
     Optional<byte[]> grpcResponse =
         Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
-    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any())).thenReturn(grpcResponse);
+    when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any()))
+        .thenReturn(grpcResponse);
     AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
     AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8.name()), "query");
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
@@ -153,6 +211,9 @@ public final class DriverConnectionHandlerTest {
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
+    verify(mockAdapterClient).sendGrpcRequest(any(), any(), contextCaptor.capture());
+    assertThat(contextCaptor.getValue().getExtraHeaders())
+        .containsExactly("x-goog-spanner-route-to-leader", ImmutableList.of("true"));
   }
 
   @Test
@@ -168,7 +229,7 @@ public final class DriverConnectionHandlerTest {
     handler.run();
 
     assertThat(outputStream.toByteArray()).isEqualTo(response);
-    verify(mockAdapterClient, never()).sendGrpcRequest(any(), any());
+    verify(mockAdapterClient, never()).sendGrpcRequest(any(), any(), any());
     verify(mockSocket).close();
   }
 
@@ -218,11 +279,15 @@ public final class DriverConnectionHandlerTest {
   }
 
   private static byte[] createQueryMessage() {
-    return encodeMessage(new Query("SELECT * FROM T"));
+    return encodeMessage(new Query("SELECT * FROM ks.T"));
+  }
+
+  private static byte[] createDmlQueryMessage() {
+    return encodeMessage(new Query("INSERT INTO ks.T (col) VALUES (1)"));
   }
 
   private static byte[] createPrepareMessage() {
-    return encodeMessage(new Prepare("SELECT * FROM T WHERE col = ?"));
+    return encodeMessage(new Prepare("SELECT * FROM ks.T WHERE col = ?"));
   }
 
   private static byte[] createExecuteMessage(byte[] queryId) {

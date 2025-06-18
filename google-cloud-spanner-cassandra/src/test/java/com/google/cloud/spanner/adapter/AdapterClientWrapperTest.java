@@ -23,6 +23,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.api.gax.grpc.GrpcCallContext;
+import com.google.api.gax.rpc.ApiCallContext;
 import com.google.api.gax.rpc.ServerStream;
 import com.google.api.gax.rpc.ServerStreamingCallable;
 import com.google.protobuf.ByteString;
@@ -48,6 +50,7 @@ public final class AdapterClientWrapperTest {
   private final ServerStreamingCallable<AdaptMessageRequest, AdaptMessageResponse> mockCallable =
       mock(ServerStreamingCallable.class);
   private final SessionManager mockSessionManager = mock(SessionManager.class);
+  private final ApiCallContext context = GrpcCallContext.createDefault();
 
   private AdapterClientWrapper adapterClientWrapper;
 
@@ -57,7 +60,8 @@ public final class AdapterClientWrapperTest {
   public void setUp() {
     attachmentsCache = new AttachmentsCache(5);
     when(mockAdapterClient.adaptMessageCallable()).thenReturn(mockCallable);
-    when(mockCallable.call(any(AdaptMessageRequest.class))).thenReturn(mockServerStream);
+    when(mockCallable.call(any(AdaptMessageRequest.class), any(ApiCallContext.class)))
+        .thenReturn(mockServerStream);
     when(mockSessionManager.getSession()).thenReturn(mockSession);
     when(mockSession.getName()).thenReturn("test-session");
     adapterClientWrapper =
@@ -85,9 +89,9 @@ public final class AdapterClientWrapperTest {
             .build();
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
 
-    byte[] response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>()).get();
+    byte[] response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context).get();
 
-    verify(mockCallable).call(expectedRequest);
+    verify(mockCallable).call(expectedRequest, context);
     assertThat(response).isEqualTo("test response".getBytes());
     assertThat(attachmentsCache.get("k1")).hasValue("v1");
     assertThat(attachmentsCache.get("k2")).hasValue("v2");
@@ -125,9 +129,9 @@ public final class AdapterClientWrapperTest {
             .setPayload(ByteString.copyFrom(payload))
             .build();
 
-    byte[] response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>()).get();
+    byte[] response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context).get();
 
-    verify(mockCallable).call(expectedRequest);
+    verify(mockCallable).call(expectedRequest, context);
     assertThat(response).isEqualTo("test header test response 1 test response 2".getBytes());
     assertThat(attachmentsCache.get("k1")).hasValue("v1");
     assertThat(attachmentsCache.get("k2")).hasValue("v2");
@@ -147,9 +151,10 @@ public final class AdapterClientWrapperTest {
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
     when(mockSession.getName()).thenReturn("test-session");
 
-    Optional<byte[]> response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>());
+    Optional<byte[]> response =
+        adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context);
 
-    verify(mockCallable).call(expectedRequest);
+    verify(mockCallable).call(expectedRequest, context);
     assertThat(!response.isPresent());
   }
 
@@ -160,6 +165,8 @@ public final class AdapterClientWrapperTest {
 
     assertThrows(
         RuntimeException.class,
-        () -> adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>()));
+        () ->
+            adapterClientWrapper.sendGrpcRequest(
+                payload, new HashMap<>(), GrpcCallContext.createDefault()));
   }
 }

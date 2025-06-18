@@ -18,6 +18,7 @@ package com.google.cloud.spanner.adapter;
 
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
 
+import com.google.api.gax.rpc.ApiCallContext;
 import com.google.api.gax.rpc.ServerStream;
 import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageRequest;
@@ -62,7 +63,8 @@ final class AdapterClientWrapper {
    * @return An {@link Optional} containing the byte array payload of the adapter's response, or
    *     {@link Optional#empty()} if no response is received.
    */
-  Optional<byte[]> sendGrpcRequest(byte[] payload, Map<String, String> attachments) {
+  Optional<byte[]> sendGrpcRequest(
+      byte[] payload, Map<String, String> attachments, ApiCallContext context) {
     AdaptMessageRequest request =
         AdaptMessageRequest.newBuilder()
             .setName(sessionManager.getSession().getName())
@@ -75,7 +77,7 @@ final class AdapterClientWrapper {
 
     try {
       ServerStream<AdaptMessageResponse> serverStream =
-          adapterClient.adaptMessageCallable().call(request);
+          adapterClient.adaptMessageCallable().call(request, context);
       for (AdaptMessageResponse adaptMessageResponse : serverStream) {
         adaptMessageResponse.getStateUpdatesMap().forEach(attachmentsCache::put);
         collectedPayloads.add(adaptMessageResponse.getPayload());
