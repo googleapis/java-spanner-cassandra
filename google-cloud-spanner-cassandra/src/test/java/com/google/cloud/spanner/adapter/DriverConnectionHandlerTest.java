@@ -155,7 +155,7 @@ public final class DriverConnectionHandlerTest {
   @Test
   public void successfulDmlExecuteMessage() throws IOException {
     // Add the `W` prefix to indicate that this query originates from a prepared DML statement.
-    byte[] queryId = "W123".getBytes();
+    byte[] queryId = "W123".getBytes(StandardCharsets.UTF_8.name());
     byte[] validPayload = createExecuteMessage(queryId);
     Optional<byte[]> grpcResponse =
         Optional.of("gRPC response".getBytes(StandardCharsets.UTF_8.name()));

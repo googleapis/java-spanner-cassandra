@@ -41,6 +41,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -52,13 +53,16 @@ final class DriverConnectionHandler implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(DriverConnectionHandler.class);
   private static final int HEADER_LENGTH = 9;
   private static final String PREPARED_QUERY_ID_ATTACHMENT_PREFIX = "pqid/";
-  private static final String WRITE_ACTION_QUERY_ID_PREFIX = "W";
+  private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
   private final AdapterClientWrapper adapterClientWrapper;
+
+  private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
+      ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -282,19 +286,18 @@ final class DriverConnectionHandler implements Runnable {
   private static ApiCallContext createContext(Frame frame) {
     ApiCallContext context = GrpcCallContext.createDefault();
     if (isDML(frame)) {
-      context =
-          context.withExtraHeaders(
-              ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true")));
+      context = context.withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
     }
     return context;
   }
 
-  /** Whether the statement encoded in the given Frame is a DML statement. */
+  /** Whether the statement decoded in the given Frame is a DML statement. */
   private static boolean isDML(Frame frame) {
     if (frame.message instanceof Execute) {
       Execute executeMsg = (Execute) frame.message;
-      String queryId = new String(executeMsg.queryId);
-      return queryId.startsWith(WRITE_ACTION_QUERY_ID_PREFIX);
+      return executeMsg.queryId != null
+          && executeMsg.queryId.length > 0
+          && executeMsg.queryId[0] == WRITE_ACTION_QUERY_ID_PREFIX;
     } else if (frame.message instanceof Batch) {
       // Batch message is always DML.
       return true;
