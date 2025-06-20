@@ -18,6 +18,7 @@ package com.google.cloud.spanner.adapter;
 
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
 
 import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
 import com.datastax.oss.protocol.internal.Compressor;
@@ -60,6 +61,8 @@ final class DriverConnectionHandler implements Runnable {
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
   private final AdapterClientWrapper adapterClientWrapper;
+  private final GrpcCallContext defaultContext;
+  private final GrpcCallContext defaultContextWithLAR;
 
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
@@ -73,6 +76,9 @@ final class DriverConnectionHandler implements Runnable {
   public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
     this.socket = socket;
     this.adapterClientWrapper = adapterClientWrapper;
+    this.defaultContext = GrpcCallContext.createDefault();
+    this.defaultContextWithLAR =
+        GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
   }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
@@ -104,7 +110,6 @@ final class DriverConnectionHandler implements Runnable {
       throws IOException {
     // Keep processing until End-Of-Stream is reached on the input
     while (true) {
-      Map<String, String> attachments = new HashMap<>();
       Optional<byte[]> responseOptional; // Using Optional to handle different response scenarios
 
       try {
@@ -116,22 +121,18 @@ final class DriverConnectionHandler implements Runnable {
           break; // Break out of the loop gracefully in case of EOF
         }
 
-        ByteBuf payloadBuf = byteBufAllocator.buffer(payload.length);
-        payloadBuf.writeBytes(payload);
-        Frame frame = serverFrameCodec.decode(payloadBuf);
-        payloadBuf.release();
-
-        // 3. Attempt to prepare Cassandra attachments.
-        // This might return:
-        //    - An Optional containing a specific response (e.g., an error related to
-        // attachments).
-        //    - An empty Optional if processing was successful and the gRPC call should proceed.
-        responseOptional = tryPrepareCassandraAttachments(attachments, frame);
+        // 3. Prepare the payload. The result will include:
+        //    - An Optional containing the result of the processing of the attachments, if any. An
+        //      empty value indicates that there were no errors.
+        //    - The context to attach to the gRPC request.
+        PreparePayloadResult prepareResult = preparePayload(payload);
+        responseOptional = prepareResult.getAttachmentErrorResponse();
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
         if (!responseOptional.isPresent()) {
           responseOptional =
-              adapterClientWrapper.sendGrpcRequest(payload, attachments, createContext(frame));
+              adapterClientWrapper.sendGrpcRequest(
+                  payload, prepareResult.getAttachments(), prepareResult.getContext());
           // Now responseOptional holds the gRPC result, which might still be empty.
         }
 
@@ -234,38 +235,70 @@ final class DriverConnectionHandler implements Runnable {
   }
 
   /**
-   * Attempts to prepare Cassandra attachments for the given payload.
+   * Attempts to prepare the given payload prior to sending the request.
    *
-   * <p>This method checks if the payload is an Execute or Batch request and if it contains a
-   * queryId. If a queryId is found, it checks if a corresponding prepared query exists in the
-   * global state. If a prepared query is found, it adds the prepared query to the attachments map.
-   * If a prepared query is not found, it returns an error response.
+   * <p>This method checks the type of message encoded in the payload and sets the appropriate
+   * attachment response and context. For attachments, it checks if the payload is an Execute or
+   * Batch request and if it contains a queryId. If a queryId is found, it checks if a corresponding
+   * prepared query exists in the global state. If a prepared query is found, it adds the prepared
+   * query to the attachments map. If a prepared query is not found, it sets an error in the result
+   * object.
    *
-   * @param attachments The map to store attachments.
-   * @param frame The decoded payload to process.
-   * @return An {@link Optional} containing an error response if a prepared query is not found, or
-   *     an empty {@code Optional} if the preparation was successful.
+   * @param payload The payload to process.
+   * @return A {@link PreparePayloadResult} containing the result of the operation.
    */
-  private Optional<byte[]> tryPrepareCassandraAttachments(
-      Map<String, String> attachments, Frame frame) {
+  private PreparePayloadResult preparePayload(byte[] payload) {
+    ByteBuf payloadBuf = byteBufAllocator.buffer(payload.length);
+    payloadBuf.writeBytes(payload);
+    Frame frame = serverFrameCodec.decode(payloadBuf);
+    payloadBuf.release();
+
     if (frame.message instanceof Execute) {
-      Execute executeMsg = (Execute) frame.message;
-      return prepareAttachmentForQueryId(attachments, executeMsg.queryId);
+      return prepareExecuteMessage((Execute) frame.message);
     }
     if (frame.message instanceof Batch) {
-      Batch batchMsg = (Batch) frame.message;
-      for (Object obj : batchMsg.queriesOrIds) {
-        if (obj instanceof byte[]) {
-          Optional<byte[]> response = prepareAttachmentForQueryId(attachments, (byte[]) obj);
-          if (response.isPresent()) {
-            return response;
-          }
+      return prepareBatchMessage((Batch) frame.message);
+    }
+    if (frame.message instanceof Query) {
+      return prepareQueryMessage((Query) frame.message);
+    }
+
+    return new PreparePayloadResult(new HashMap(), Optional.empty(), defaultContext);
+  }
+
+  private PreparePayloadResult prepareExecuteMessage(Execute message) {
+    ApiCallContext context;
+    if (message.queryId != null
+        && message.queryId.length > 0
+        && message.queryId[0] == WRITE_ACTION_QUERY_ID_PREFIX) {
+      context = defaultContextWithLAR;
+    } else {
+      context = defaultContext;
+    }
+    Map<String, String> attachments = new HashMap();
+    Optional<byte[]> errorResponse = prepareAttachmentForQueryId(attachments, message.queryId);
+    return new PreparePayloadResult(attachments, errorResponse, context);
+  }
+
+  private PreparePayloadResult prepareBatchMessage(Batch message) {
+    Map<String, String> attachments = new HashMap();
+    Optional<byte[]> attachmentErrorResponse = Optional.empty();
+    for (Object obj : message.queriesOrIds) {
+      if (obj instanceof byte[]) {
+        Optional<byte[]> errorResponse = prepareAttachmentForQueryId(attachments, (byte[]) obj);
+        if (errorResponse.isPresent()) {
+          attachmentErrorResponse = errorResponse;
+          break;
         }
       }
     }
+    return new PreparePayloadResult(attachments, attachmentErrorResponse, defaultContextWithLAR);
+  }
 
-    // No error.
-    return Optional.empty();
+  private PreparePayloadResult prepareQueryMessage(Query message) {
+    ApiCallContext context =
+        startsWith(message.query, "SELECT") ? defaultContext : defaultContextWithLAR;
+    return new PreparePayloadResult(new HashMap(), Optional.empty(), context);
   }
 
   private Optional<byte[]> prepareAttachmentForQueryId(
@@ -281,30 +314,5 @@ final class DriverConnectionHandler implements Runnable {
 
   private static String constructKey(byte[] queryId) {
     return PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
-  }
-
-  private static ApiCallContext createContext(Frame frame) {
-    ApiCallContext context = GrpcCallContext.createDefault();
-    if (isDML(frame)) {
-      context = context.withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
-    }
-    return context;
-  }
-
-  /** Whether the statement decoded in the given Frame is a DML statement. */
-  private static boolean isDML(Frame frame) {
-    if (frame.message instanceof Execute) {
-      Execute executeMsg = (Execute) frame.message;
-      return executeMsg.queryId != null
-          && executeMsg.queryId.length > 0
-          && executeMsg.queryId[0] == WRITE_ACTION_QUERY_ID_PREFIX;
-    } else if (frame.message instanceof Batch) {
-      // Batch message is always DML.
-      return true;
-    } else if (frame.message instanceof Query) {
-      Query queryMsg = (Query) frame.message;
-      return !queryMsg.query.toLowerCase().startsWith("select");
-    }
-    return false;
   }
 }
