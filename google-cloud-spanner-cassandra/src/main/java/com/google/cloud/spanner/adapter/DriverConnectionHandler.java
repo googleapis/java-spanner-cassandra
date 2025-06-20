@@ -248,6 +248,7 @@ final class DriverConnectionHandler implements Runnable {
    * @return A {@link PreparePayloadResult} containing the result of the operation.
    */
   private PreparePayloadResult preparePayload(byte[] payload) {
+    // TODO: replace with Unpooled.wrappedBuffer(...) to avoid an extra memory copy.
     ByteBuf payloadBuf = byteBufAllocator.buffer(payload.length);
     payloadBuf.writeBytes(payload);
     Frame frame = serverFrameCodec.decode(payloadBuf);
