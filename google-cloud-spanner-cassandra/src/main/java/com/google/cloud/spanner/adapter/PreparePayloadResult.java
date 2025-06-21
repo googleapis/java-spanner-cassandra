@@ -25,40 +25,32 @@ import java.util.Optional;
  * gRPC request.
  */
 public class PreparePayloadResult {
-  private Optional<byte[]> attachmentErrorResponse;
   private ApiCallContext context;
   private Map<String, String> attachments;
+  private Optional<byte[]> attachmentErrorResponse;
 
   public PreparePayloadResult(
+      ApiCallContext context,
       Map<String, String> attachments,
-      Optional<byte[]> attachmentErrorResponse,
-      ApiCallContext context) {
+      Optional<byte[]> attachmentErrorResponse) {
+    this.context = context;
     this.attachments = attachments;
     this.attachmentErrorResponse = attachmentErrorResponse;
-    this.context = context;
+  }
+
+  public PreparePayloadResult(ApiCallContext context, Map<String, String> attachments) {
+    this(context, attachments, Optional.empty());
   }
 
   public Map<String, String> getAttachments() {
     return attachments;
   }
 
-  public void setAttachments(Map<String, String> attachments) {
-    this.attachments = attachments;
-  }
-
   public Optional<byte[]> getAttachmentErrorResponse() {
     return attachmentErrorResponse;
   }
 
-  public void setAttachmentErrorResponse(Optional<byte[]> attachmentErrorResponse) {
-    this.attachmentErrorResponse = attachmentErrorResponse;
-  }
-
   public ApiCallContext getContext() {
     return context;
-  }
-
-  public void setContext(ApiCallContext context) {
-    this.context = context;
   }
 }

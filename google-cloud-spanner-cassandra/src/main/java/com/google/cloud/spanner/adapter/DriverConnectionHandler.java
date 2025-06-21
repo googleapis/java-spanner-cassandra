@@ -110,7 +110,7 @@ final class DriverConnectionHandler implements Runnable {
       throws IOException {
     // Keep processing until End-Of-Stream is reached on the input
     while (true) {
-      Optional<byte[]> responseOptional; // Using Optional to handle different response scenarios
+      Optional<byte[]> response; // Using Optional to handle different response scenarios
 
       try {
         // 1. Read and construct the payload from the input stream
@@ -121,38 +121,35 @@ final class DriverConnectionHandler implements Runnable {
           break; // Break out of the loop gracefully in case of EOF
         }
 
-        // 3. Prepare the payload. The result will include:
-        //    - An Optional containing the result of the processing of the attachments, if any. An
-        //      empty value indicates that there were no errors.
-        //    - The context to attach to the gRPC request.
+        // 3. Prepare the payload.
         PreparePayloadResult prepareResult = preparePayload(payload);
-        responseOptional = prepareResult.getAttachmentErrorResponse();
+        response = prepareResult.getAttachmentErrorResponse();
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-        if (!responseOptional.isPresent()) {
-          responseOptional =
+        if (!response.isPresent()) {
+          response =
               adapterClientWrapper.sendGrpcRequest(
                   payload, prepareResult.getAttachments(), prepareResult.getContext());
-          // Now responseOptional holds the gRPC result, which might still be empty.
+          // Now response holds the gRPC result, which might still be empty.
         }
 
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
-        responseOptional =
+        response =
             Optional.of(
                 serverErrorResponse("Server error during request processing: " + e.getMessage()));
       }
 
       // 6. Determine the final response byte array to write.
-      // If responseOptional is empty at this point, it means:
+      // If response is empty at this point, it means:
       //   a) Attachment processing completed successfully without an immediate response.
       //   b) The gRPC call was made.
       //   c) The gRPC call itself returned an empty Optional (e.g., server timeout, no specific
       // data).
       // In this case, generate a default "No response" error.
       byte[] responseToWrite =
-          responseOptional.orElseGet(
+          response.orElseGet(
               () -> {
                 LOG.warn("No response received from the backend server.");
                 return serverErrorResponse("No response received from the server.");
@@ -254,20 +251,22 @@ final class DriverConnectionHandler implements Runnable {
     Frame frame = serverFrameCodec.decode(payloadBuf);
     payloadBuf.release();
 
+    Map<String, String> attachments = new HashMap();
     if (frame.message instanceof Execute) {
-      return prepareExecuteMessage((Execute) frame.message);
+      return prepareExecuteMessage((Execute) frame.message, attachments);
     }
     if (frame.message instanceof Batch) {
-      return prepareBatchMessage((Batch) frame.message);
+      return prepareBatchMessage((Batch) frame.message, attachments);
     }
     if (frame.message instanceof Query) {
-      return prepareQueryMessage((Query) frame.message);
+      return prepareQueryMessage((Query) frame.message, attachments);
     }
 
-    return new PreparePayloadResult(new HashMap(), Optional.empty(), defaultContext);
+    return new PreparePayloadResult(defaultContext, attachments);
   }
 
-  private PreparePayloadResult prepareExecuteMessage(Execute message) {
+  private PreparePayloadResult prepareExecuteMessage(
+      Execute message, Map<String, String> attachments) {
     ApiCallContext context;
     if (message.queryId != null
         && message.queryId.length > 0
@@ -276,13 +275,11 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       context = defaultContext;
     }
-    Map<String, String> attachments = new HashMap();
     Optional<byte[]> errorResponse = prepareAttachmentForQueryId(attachments, message.queryId);
-    return new PreparePayloadResult(attachments, errorResponse, context);
+    return new PreparePayloadResult(context, attachments, errorResponse);
   }
 
-  private PreparePayloadResult prepareBatchMessage(Batch message) {
-    Map<String, String> attachments = new HashMap();
+  private PreparePayloadResult prepareBatchMessage(Batch message, Map<String, String> attachments) {
     Optional<byte[]> attachmentErrorResponse = Optional.empty();
     for (Object obj : message.queriesOrIds) {
       if (obj instanceof byte[]) {
@@ -293,13 +290,13 @@ final class DriverConnectionHandler implements Runnable {
         }
       }
     }
-    return new PreparePayloadResult(attachments, attachmentErrorResponse, defaultContextWithLAR);
+    return new PreparePayloadResult(defaultContextWithLAR, attachments, attachmentErrorResponse);
   }
 
-  private PreparePayloadResult prepareQueryMessage(Query message) {
+  private PreparePayloadResult prepareQueryMessage(Query message, Map<String, String> attachments) {
     ApiCallContext context =
         startsWith(message.query, "SELECT") ? defaultContext : defaultContextWithLAR;
-    return new PreparePayloadResult(new HashMap(), Optional.empty(), context);
+    return new PreparePayloadResult(context, attachments);
   }
 
   private Optional<byte[]> prepareAttachmentForQueryId(
