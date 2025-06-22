@@ -70,6 +70,7 @@ public final class SpannerCqlSessionBuilder
     return this;
   }
 
+  /** Sets the number of gRPC channels to use. By default 4 channels are created. */
   public SpannerCqlSessionBuilder setNumGrpcChannels(int numGrpcChannels) {
     this.numGrpcChannels = numGrpcChannels;
     return this;
