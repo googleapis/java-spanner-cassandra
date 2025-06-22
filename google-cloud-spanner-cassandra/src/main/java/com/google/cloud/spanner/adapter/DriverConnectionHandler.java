@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
@@ -225,10 +226,7 @@ final class DriverConnectionHandler implements Runnable {
   }
 
   private int load32BigEndian(byte[] bytes, int offset) {
-    return (bytes[offset] << 24)
-        | ((bytes[offset + 1] & 0xFF) << 16)
-        | ((bytes[offset + 2] & 0xFF) << 8)
-        | (bytes[offset + 3] & 0xFF);
+    return ByteBuffer.wrap(bytes, offset, 4).getInt();
   }
 
   /**
