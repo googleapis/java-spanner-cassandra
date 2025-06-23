@@ -247,7 +247,7 @@ final class DriverConnectionHandler implements Runnable {
     Frame frame = serverFrameCodec.decode(payloadBuf);
     payloadBuf.release();
 
-    Map<String, String> attachments = new HashMap<String, String>();
+    Map<String, String> attachments = new HashMap<>();
     if (frame.message instanceof Execute) {
       return prepareExecuteMessage((Execute) frame.message, attachments);
     } else if (frame.message instanceof Batch) {
