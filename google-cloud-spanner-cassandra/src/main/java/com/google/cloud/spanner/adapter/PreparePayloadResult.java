@@ -17,6 +17,7 @@ limitations under the License.
 package com.google.cloud.spanner.adapter;
 
 import com.google.api.gax.rpc.ApiCallContext;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 
@@ -40,6 +41,10 @@ public class PreparePayloadResult {
 
   public PreparePayloadResult(ApiCallContext context, Map<String, String> attachments) {
     this(context, attachments, Optional.empty());
+  }
+
+  public PreparePayloadResult(ApiCallContext context) {
+    this(context, Collections.emptyMap(), Optional.empty());
   }
 
   public Map<String, String> getAttachments() {

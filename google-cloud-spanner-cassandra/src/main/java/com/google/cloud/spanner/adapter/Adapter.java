@@ -28,6 +28,8 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -58,6 +60,7 @@ final class Adapter {
   private final int port;
   private final String databaseUri;
   private final int numGrpcChannels;
+  private final Optional<Duration> maxCommitDelay;
   private AdapterClientWrapper adapterClientWrapper;
   private ServerSocket serverSocket;
   private ExecutorService executor;
@@ -71,12 +74,19 @@ final class Adapter {
    * @param port The local TCP port number that the adapter server should listen on.
    * @param numGrpcChannels The number of gRPC channels to use for communication with the backend
    *     Spanner service.
+   * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
    */
-  Adapter(String databaseUri, InetAddress inetAddress, int port, int numGrpcChannels) {
+  Adapter(
+      String databaseUri,
+      InetAddress inetAddress,
+      int port,
+      int numGrpcChannels,
+      Optional<Duration> maxCommitDelay) {
     this.databaseUri = databaseUri;
     this.inetAddress = inetAddress;
     this.port = port;
     this.numGrpcChannels = numGrpcChannels;
+    this.maxCommitDelay = maxCommitDelay;
   }
 
   /** Starts the adapter, initializing the local TCP server and handling client connections. */
@@ -160,7 +170,8 @@ final class Adapter {
     try {
       while (!Thread.currentThread().isInterrupted()) {
         final Socket clientSocket = serverSocket.accept();
-        executor.execute(new DriverConnectionHandler(clientSocket, adapterClientWrapper));
+        executor.execute(
+            new DriverConnectionHandler(clientSocket, adapterClientWrapper, maxCommitDelay));
         LOG.info("Accepted client connection from: {}", clientSocket.getRemoteSocketAddress());
       }
     } catch (SocketException e) {

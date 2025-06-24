@@ -34,6 +34,7 @@ import com.google.spanner.adapter.v1.Session;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.UnknownHostException;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.Before;
@@ -55,7 +56,7 @@ public final class AdapterTest {
 
   @Before
   public void setUp() {
-    adapter = new Adapter(TEST_DATABASE_URI, inetAddress, TEST_PORT, 4);
+    adapter = new Adapter(TEST_DATABASE_URI, inetAddress, TEST_PORT, 4, Optional.empty());
   }
 
   @Test

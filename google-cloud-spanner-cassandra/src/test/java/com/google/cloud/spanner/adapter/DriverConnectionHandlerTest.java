@@ -45,9 +45,11 @@ import java.io.IOException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.Before;
 import org.junit.Test;
@@ -61,6 +63,8 @@ public final class DriverConnectionHandlerTest {
           new ByteBufPrimitiveCodec(ByteBufAllocator.DEFAULT), Compressor.none());
   private static final ArgumentCaptor<ApiCallContext> contextCaptor =
       ArgumentCaptor.forClass(ApiCallContext.class);
+  private static final ArgumentCaptor<Map<String, String>> attachmentsCaptor =
+      ArgumentCaptor.forClass(Map.class);
   private AdapterClientWrapper mockAdapterClient;
   private Socket mockSocket;
   private ByteArrayOutputStream outputStream;
@@ -140,16 +144,23 @@ public final class DriverConnectionHandlerTest {
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any()))
         .thenReturn(grpcResponse);
     AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
-    AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8.name()), "query");
+    String preparedQueryKey = "pqid/" + new String(queryId, StandardCharsets.UTF_8.name());
+    AttachmentsCache.put(preparedQueryKey, "query");
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
 
-    DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
+    // Use a max commit delay of 100 ms.
+    DriverConnectionHandler handler =
+        new DriverConnectionHandler(
+            mockSocket, mockAdapterClient, Optional.of(Duration.ofMillis(100)));
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
-    verify(mockAdapterClient).sendGrpcRequest(any(), any(), contextCaptor.capture());
+    verify(mockAdapterClient)
+        .sendGrpcRequest(any(), attachmentsCaptor.capture(), contextCaptor.capture());
     assertThat(contextCaptor.getValue().getExtraHeaders()).isEmpty();
+    assertThat(attachmentsCaptor.getValue())
+        .containsExactly(preparedQueryKey, "query", "max_commit_delay", "100");
   }
 
   @Test

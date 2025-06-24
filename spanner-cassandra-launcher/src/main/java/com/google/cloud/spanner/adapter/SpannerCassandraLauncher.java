@@ -17,6 +17,8 @@ limitations under the License.
 package com.google.cloud.spanner.adapter;
 
 import java.net.InetAddress;
+import java.time.Duration;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +38,8 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code port}: (Optional) The port number to bind the service to. Defaults to 9042.
  *   <li>{@code numGrpcChannels}: (Optional) The number of gRPC channels to use for communication
  *       with Spanner. Defaults to 4.
+ *   <li>{@code maxCommitDelayMillis}: (Optional) The max commit delay to set in requests to
+ *       optimize write throughput, in milliseconds. Defaults to none.
  * </ul>
  *
  * Example usage:
@@ -45,6 +49,7 @@ import org.slf4j.LoggerFactory;
  * -Dhost=127.0.0.1 \
  * -Dport=9042 \
  * -DnumGrpcChannels=4 \
+ * -DmaxCommitDelayMillis=100 \
  * -cp path/to/your/spanner-cassandra-launcher.jar com.google.cloud.spanner.adapter.SpannerCassandraLauncher
  * </pre>
  *
@@ -59,6 +64,7 @@ public class SpannerCassandraLauncher {
   private static final String DEFAULT_HOST = "0.0.0.0";
   private static final String DEFAULT_PORT = "9042";
   private static final String DEFAULT_NUM_GRPC_CHANNELS = "4";
+  private static final String MAX_COMMIT_DELAY_PROP_KEY = "maxCommitDelayMillis";
 
   public static void main(String[] args) throws Exception {
     final String databaseUri = System.getProperty(DATABASE_URI_PROP_KEY);
@@ -67,13 +73,20 @@ public class SpannerCassandraLauncher {
     final int port = Integer.parseInt(System.getProperty(PORT_PROP_KEY, DEFAULT_PORT));
     final int numGrpcChannels =
         Integer.parseInt(System.getProperty(NUM_GRPC_CHANNELS_PROP_KEY, DEFAULT_NUM_GRPC_CHANNELS));
+    final String maxCommitDelayProperty = System.getProperty(MAX_COMMIT_DELAY_PROP_KEY);
+    final Optional<Duration> maxCommitDelay;
+    if (maxCommitDelayProperty != null) {
+      maxCommitDelay = Optional.of(Duration.ofMillis(Integer.parseInt(maxCommitDelayProperty)));
+    } else {
+      maxCommitDelay = Optional.empty();
+    }
 
     if (databaseUri == null) {
       throw new IllegalArgumentException(
           "Spanner database URI not set. Please set it using -DdatabaseUri option.");
     }
 
-    Adapter adapter = new Adapter(databaseUri, inetAddress, port, numGrpcChannels);
+    Adapter adapter = new Adapter(databaseUri, inetAddress, port, numGrpcChannels, maxCommitDelay);
 
     Runtime.getRuntime()
         .addShutdownHook(
@@ -87,11 +100,13 @@ public class SpannerCassandraLauncher {
                 }));
 
     LOG.info(
-        "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels...",
+        "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels and max commit"
+            + " delay of {}...",
         databaseUri,
         inetAddress,
         port,
-        numGrpcChannels);
+        numGrpcChannels,
+        maxCommitDelayProperty);
 
     adapter.start();
 

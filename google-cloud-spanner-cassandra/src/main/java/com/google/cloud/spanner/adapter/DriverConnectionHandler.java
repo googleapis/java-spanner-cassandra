@@ -41,6 +41,7 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -57,29 +58,41 @@ final class DriverConnectionHandler implements Runnable {
   private static final String PREPARED_QUERY_ID_ATTACHMENT_PREFIX = "pqid/";
   private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
+  private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
   private final AdapterClientWrapper adapterClientWrapper;
+  private final Optional<String> maxCommitDelayMillis;
   private final GrpcCallContext defaultContext;
   private final GrpcCallContext defaultContextWithLAR;
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
-  private static final Map<String, String> EMPTY_ATTACHMENTS = Collections.emptyMap();
 
   /**
    * Constructor for DriverConnectionHandler.
    *
    * @param socket The client's socket.
    * @param adapterClientWrapper The adapter client wrapper used for gRPC communication.
+   * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
    */
-  public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
+  public DriverConnectionHandler(
+      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
     this.socket = socket;
     this.adapterClientWrapper = adapterClientWrapper;
     this.defaultContext = GrpcCallContext.createDefault();
     this.defaultContextWithLAR =
         GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
+    if (maxCommitDelay.isPresent()) {
+      this.maxCommitDelayMillis = Optional.of(String.valueOf(maxCommitDelay.get().toMillis()));
+    } else {
+      this.maxCommitDelayMillis = Optional.empty();
+    }
+  }
+
+  public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
+    this(socket, adapterClientWrapper, Optional.empty());
   }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
@@ -248,14 +261,19 @@ final class DriverConnectionHandler implements Runnable {
     payloadBuf.release();
 
     Map<String, String> attachments = new HashMap<>();
+    if ((frame.message instanceof Execute || frame.message instanceof Batch)
+        && maxCommitDelayMillis.isPresent()) {
+      attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
+    }
+
     if (frame.message instanceof Execute) {
       return prepareExecuteMessage((Execute) frame.message, attachments);
     } else if (frame.message instanceof Batch) {
       return prepareBatchMessage((Batch) frame.message, attachments);
     } else if (frame.message instanceof Query) {
-      return prepareQueryMessage((Query) frame.message, attachments);
+      return prepareQueryMessage((Query) frame.message);
     } else {
-      return new PreparePayloadResult(defaultContext, EMPTY_ATTACHMENTS);
+      return new PreparePayloadResult(defaultContext);
     }
   }
 
@@ -287,10 +305,10 @@ final class DriverConnectionHandler implements Runnable {
     return new PreparePayloadResult(defaultContextWithLAR, attachments, attachmentErrorResponse);
   }
 
-  private PreparePayloadResult prepareQueryMessage(Query message, Map<String, String> attachments) {
+  private PreparePayloadResult prepareQueryMessage(Query message) {
     ApiCallContext context =
         startsWith(message.query, "SELECT") ? defaultContext : defaultContextWithLAR;
-    return new PreparePayloadResult(context, attachments);
+    return new PreparePayloadResult(context);
   }
 
   private Optional<byte[]> prepareAttachmentForQueryId(

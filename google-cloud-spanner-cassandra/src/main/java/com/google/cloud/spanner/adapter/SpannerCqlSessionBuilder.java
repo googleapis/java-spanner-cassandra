@@ -23,6 +23,8 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -47,6 +49,7 @@ public final class SpannerCqlSessionBuilder
   private Adapter adapter;
   private int numGrpcChannels = DEFAULT_NUM_GRPC_CHANNELS;
   private String databaseUri = null;
+  private Optional<Duration> maxCommitDelay = Optional.empty();
 
   /**
    * Wraps the default CQL session with a SpannerCqlSession instance.
@@ -73,6 +76,12 @@ public final class SpannerCqlSessionBuilder
   /** Sets the number of gRPC channels to use. By default 4 channels are created. */
   public SpannerCqlSessionBuilder setNumGrpcChannels(int numGrpcChannels) {
     this.numGrpcChannels = numGrpcChannels;
+    return this;
+  }
+
+  /** Sets the max commit delay to use in requests. By default this argument is not set. */
+  public SpannerCqlSessionBuilder setMaxCommitDelay(Duration maxCommitDelay) {
+    this.maxCommitDelay = Optional.of(maxCommitDelay);
     return this;
   }
 
@@ -159,7 +168,7 @@ public final class SpannerCqlSessionBuilder
   }
 
   private void createAndStartAdapter() {
-    adapter = new Adapter(databaseUri, iNetAddress, port, numGrpcChannels);
+    adapter = new Adapter(databaseUri, iNetAddress, port, numGrpcChannels, maxCommitDelay);
     adapter.start();
   }
 }
