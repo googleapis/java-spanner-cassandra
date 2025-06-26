@@ -15,6 +15,7 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
+import com.google.api.gax.core.GaxProperties;
 import com.google.api.gax.grpc.ChannelPoolSettings;
 import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
 import com.google.api.gax.rpc.FixedHeaderProvider;
@@ -44,6 +45,14 @@ final class Adapter {
   private static final String ENV_VAR_GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS =
       "GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS";
   private static final String ENV_VAR_SPANNER_ENDPOINT = "SPANNER_ENDPOINT";
+  private static final String USER_AGENT_KEY = "user-agent";
+  private static final String CLIENT_LIBRARY_LANGUAGE = "java-spanner-cassandra";
+  private static final String CLIENT_VERSION = "0.3.0"; // {x-release-please-version}
+  public static final String DEFAULT_USER_AGENT =
+      CLIENT_LIBRARY_LANGUAGE
+          + "/v"
+          + CLIENT_VERSION
+          + GaxProperties.getLibraryVersion(Adapter.class);
 
   private final InetAddress inetAddress;
   private final int port;
@@ -92,7 +101,8 @@ final class Adapter {
       }
 
       HeaderProvider headerProvider =
-          FixedHeaderProvider.create(RESOURCE_PREFIX_HEADER_KEY, databaseUri);
+          FixedHeaderProvider.create(
+              RESOURCE_PREFIX_HEADER_KEY, databaseUri, USER_AGENT_KEY, DEFAULT_USER_AGENT);
 
       final String env_var_endpoint = System.getenv(ENV_VAR_SPANNER_ENDPOINT);
 
