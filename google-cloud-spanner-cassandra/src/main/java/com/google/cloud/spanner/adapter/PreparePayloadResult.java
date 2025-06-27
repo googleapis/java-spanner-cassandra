@@ -29,6 +29,7 @@ public class PreparePayloadResult {
   private ApiCallContext context;
   private Map<String, String> attachments;
   private Optional<byte[]> attachmentErrorResponse;
+  private static final Map<String, String> EMPTY_ATTACHMENTS = Collections.emptyMap();
 
   public PreparePayloadResult(
       ApiCallContext context,
@@ -44,7 +45,7 @@ public class PreparePayloadResult {
   }
 
   public PreparePayloadResult(ApiCallContext context) {
-    this(context, Collections.emptyMap(), Optional.empty());
+    this(context, EMPTY_ATTACHMENTS, Optional.empty());
   }
 
   public Map<String, String> getAttachments() {

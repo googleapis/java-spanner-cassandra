@@ -43,6 +43,7 @@ public final class SpannerCqlSessionBuilder
   private static final int DEFAULT_PORT = 9042;
   private static final String DEFAULT_HOST = "0.0.0.0";
   private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
+  private static final int LARGEST_MAX_COMMIT_DELAY_MILLIS = 500;
 
   private InetAddress iNetAddress;
   private int port;
@@ -79,7 +80,11 @@ public final class SpannerCqlSessionBuilder
     return this;
   }
 
-  /** Sets the max commit delay to use in requests. By default this argument is not set. */
+  // TODO: Add a code sample for setting this option.
+  /**
+   * Sets the max commit delay to use in requests. This will apply globally to all Batch and Execute
+   * DML requests. By default this argument is not set.
+   */
   public SpannerCqlSessionBuilder setMaxCommitDelay(Duration maxCommitDelay) {
     this.maxCommitDelay = Optional.of(maxCommitDelay);
     return this;
@@ -120,6 +125,7 @@ public final class SpannerCqlSessionBuilder
     checkDatabaseUri();
     checkContactPoints();
     checkNumGrpcChannels();
+    checkMaxCommitDelay();
   }
 
   private void checkDatabaseUri() {
@@ -164,6 +170,15 @@ public final class SpannerCqlSessionBuilder
   private void checkNumGrpcChannels() {
     if (numGrpcChannels <= 0) {
       throw new IllegalArgumentException("Number of gRPC channels should be greater than 0.");
+    }
+  }
+
+  private void checkMaxCommitDelay() {
+    if (maxCommitDelay.isPresent()
+        && (maxCommitDelay.get().isNegative()
+            || maxCommitDelay.get().toMillis() > LARGEST_MAX_COMMIT_DELAY_MILLIS)) {
+      throw new IllegalArgumentException(
+          "The max commit delay must be > 0 and < " + LARGEST_MAX_COMMIT_DELAY_MILLIS + "ms.");
     }
   }
 

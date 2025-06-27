@@ -82,6 +82,8 @@ final class Adapter {
       int port,
       int numGrpcChannels,
       Optional<Duration> maxCommitDelay) {
+    // TODO: Encapsulate arguments in an Options class to accomodate future fields without having to
+    // pass them individually.
     this.databaseUri = databaseUri;
     this.inetAddress = inetAddress;
     this.port = port;

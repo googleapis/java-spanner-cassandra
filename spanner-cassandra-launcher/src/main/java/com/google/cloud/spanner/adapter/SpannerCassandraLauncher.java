@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * -Dhost=127.0.0.1 \
  * -Dport=9042 \
  * -DnumGrpcChannels=4 \
- * -DmaxCommitDelayMillis=100 \
+ * -DmaxCommitDelayMillis=5 \
  * -cp path/to/your/spanner-cassandra-launcher.jar com.google.cloud.spanner.adapter.SpannerCassandraLauncher
  * </pre>
  *

@@ -261,17 +261,12 @@ final class DriverConnectionHandler implements Runnable {
     payloadBuf.release();
 
     Map<String, String> attachments = new HashMap<>();
-    if ((frame.message instanceof Execute || frame.message instanceof Batch)
-        && maxCommitDelayMillis.isPresent()) {
-      attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
-    }
-
     if (frame.message instanceof Execute) {
       return prepareExecuteMessage((Execute) frame.message, attachments);
     } else if (frame.message instanceof Batch) {
       return prepareBatchMessage((Batch) frame.message, attachments);
     } else if (frame.message instanceof Query) {
-      return prepareQueryMessage((Query) frame.message);
+      return prepareQueryMessage((Query) frame.message, attachments);
     } else {
       return new PreparePayloadResult(defaultContext);
     }
@@ -284,6 +279,9 @@ final class DriverConnectionHandler implements Runnable {
         && message.queryId.length > 0
         && message.queryId[0] == WRITE_ACTION_QUERY_ID_PREFIX) {
       context = defaultContextWithLAR;
+      if (maxCommitDelayMillis.isPresent()) {
+        attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
+      }
     } else {
       context = defaultContext;
     }
@@ -302,13 +300,23 @@ final class DriverConnectionHandler implements Runnable {
         }
       }
     }
+    if (maxCommitDelayMillis.isPresent()) {
+      attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
+    }
     return new PreparePayloadResult(defaultContextWithLAR, attachments, attachmentErrorResponse);
   }
 
-  private PreparePayloadResult prepareQueryMessage(Query message) {
-    ApiCallContext context =
-        startsWith(message.query, "SELECT") ? defaultContext : defaultContextWithLAR;
-    return new PreparePayloadResult(context);
+  private PreparePayloadResult prepareQueryMessage(Query message, Map<String, String> attachments) {
+    ApiCallContext context;
+    if (startsWith(message.query, "SELECT")) {
+      context = defaultContext;
+    } else {
+      context = defaultContextWithLAR;
+      if (maxCommitDelayMillis.isPresent()) {
+        attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
+      }
+    }
+    return new PreparePayloadResult(context, attachments);
   }
 
   private Optional<byte[]> prepareAttachmentForQueryId(
