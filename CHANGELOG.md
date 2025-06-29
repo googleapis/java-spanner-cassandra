@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.3.0...v0.4.0) (2025-06-29)
+
+
+### Features
+
+* Add support for setting spanner host ([#122](https://github.com/googleapis/java-spanner-cassandra/issues/122)) ([9ed5c49](https://github.com/googleapis/java-spanner-cassandra/commit/9ed5c49d7d1c4706aabae1b3ca52da201264c1bf))
+* Add support for setting the max commit delay ([#115](https://github.com/googleapis/java-spanner-cassandra/issues/115)) ([1945467](https://github.com/googleapis/java-spanner-cassandra/commit/19454675d3dff0445a0a3be24feed20559337a34))
+* Enable Leader-Aware Routing by default for all write operations ([#104](https://github.com/googleapis/java-spanner-cassandra/issues/104)) ([d8c4e47](https://github.com/googleapis/java-spanner-cassandra/commit/d8c4e47cac549e83e23e1b42326d654225f1cfb9))
+
+
+### Bug Fixes
+
+* Add missing dependencies in samples packcage ([#73](https://github.com/googleapis/java-spanner-cassandra/issues/73)) ([f9208b2](https://github.com/googleapis/java-spanner-cassandra/commit/f9208b23ead09cb188d8cf53634b417653725e06))
+
+
+### Documentation
+
+* Add unsupported features from apache/cassandra-java-driver ([#42](https://github.com/googleapis/java-spanner-cassandra/issues/42)) ([3df0067](https://github.com/googleapis/java-spanner-cassandra/commit/3df00673d3303453d56da99c24f5eb36eae59155))
+* Correct developers ([#75](https://github.com/googleapis/java-spanner-cassandra/issues/75)) ([83d23f3](https://github.com/googleapis/java-spanner-cassandra/commit/83d23f3f78a9fc8b74f5061007afc15d1542ede1))
+
 ## [0.3.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.2.0...v0.3.0) (2025-05-15)
 
 
