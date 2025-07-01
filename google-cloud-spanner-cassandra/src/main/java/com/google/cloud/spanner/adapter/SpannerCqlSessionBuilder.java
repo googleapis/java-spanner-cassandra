@@ -72,7 +72,7 @@ public final class SpannerCqlSessionBuilder
    * @param host The spanner host.
    * @return This builder instance.
    */
-  public SpannerCqlSessionBuilder sethost(String host) {
+  public SpannerCqlSessionBuilder setHost(String host) {
     this.host = host;
     return this;
   }
