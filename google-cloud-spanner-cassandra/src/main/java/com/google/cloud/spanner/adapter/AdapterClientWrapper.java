@@ -30,10 +30,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Wraps an {@link AdapterClient} to manage gRPC communication with the Adapter service. */
 final class AdapterClientWrapper {
-
+  private static final Logger LOG = LoggerFactory.getLogger(AdapterClientWrapper.class);
   private final AdapterClient adapterClient;
   private final AttachmentsCache attachmentsCache;
   private final SessionManager sessionManager;
@@ -83,6 +85,7 @@ final class AdapterClientWrapper {
         collectedPayloads.add(adaptMessageResponse.getPayload());
       }
     } catch (RuntimeException e) {
+      LOG.error("Error executing AdaptMessage request: ", e);
       // Any error in getting the AdaptMessageResponse should be reported back to the client.
       return Optional.of(serverErrorResponse(e.getMessage()));
     }
@@ -102,6 +105,7 @@ final class AdapterClientWrapper {
       }
       return Optional.of(outputStream.toByteArray());
     } catch (IOException e) {
+      LOG.error("Error stitching chunked payloads: ", e);
       return Optional.of(serverErrorResponse(e.getMessage()));
     }
   }

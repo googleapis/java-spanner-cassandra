@@ -147,6 +147,7 @@ final class DriverConnectionHandler implements Runnable {
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
+        LOG.error("Error processing request: ", e);
         response =
             Optional.of(
                 serverErrorResponse("Server error during request processing: " + e.getMessage()));
