@@ -40,11 +40,10 @@ import java.util.concurrent.TimeUnit;
 /** Manages connection to a Spanner database using Cassandra endpoint */
 public class SpannerContext extends DatabaseContext {
 
-  private static final InstanceName instanceName =
-      InstanceName.parse(System.getenv("INTEGRATION_TEST_INSTANCE"));
   private static final String ENV_VAR_SPANNER_ENDPOINT = "SPANNER_ENDPOINT";
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
 
+  private final InstanceName instanceName;
   private final String databaseId;
   private final DatabaseName databaseName;
 
@@ -54,6 +53,11 @@ public class SpannerContext extends DatabaseContext {
   public SpannerContext() {
     super("Spanner");
     databaseId = "java_it_test_" + LocalDateTime.now().format(formatter);
+    final String instanceNameStr = System.getenv("INTEGRATION_TEST_INSTANCE");
+    if (instanceNameStr == null) {
+      throw new NullPointerException("Environment variable INTEGRATION_TEST_INSTANCE must be set");
+    }
+    instanceName = InstanceName.parse(instanceNameStr);
     databaseName =
         DatabaseName.parse(
             String.format(
