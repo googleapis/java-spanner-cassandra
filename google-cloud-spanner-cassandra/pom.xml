@@ -63,6 +63,22 @@
             <artifactId>truth</artifactId>
             <scope>test</scope>
         </dependency>
+         <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.cloud.opentelemetry</groupId>
+            <artifactId>detector-resources-support</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.cloud.opentelemetry</groupId>
+            <artifactId>exporter-metrics</artifactId>
+        </dependency>
     </dependencies>
 
 </project>
