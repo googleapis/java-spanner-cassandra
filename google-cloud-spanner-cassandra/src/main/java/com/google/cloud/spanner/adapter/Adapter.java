@@ -20,7 +20,9 @@ import com.google.api.gax.grpc.ChannelPoolSettings;
 import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
 import com.google.api.gax.rpc.FixedHeaderProvider;
 import com.google.api.gax.rpc.HeaderProvider;
+import com.google.api.pathtemplate.PathTemplate;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.common.base.Preconditions;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
 import java.io.IOException;
@@ -30,6 +32,7 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,17 +58,22 @@ final class Adapter {
           + "/v"
           + CLIENT_VERSION
           + GaxProperties.getLibraryVersion(Adapter.class);
+  private static final PathTemplate DATABASE_URI_TEMPLATE =
+      PathTemplate.create("projects/{project}/instances/{instance}/databases/{database}");
 
   private final InetAddress inetAddress;
   private final int port;
   private final String host;
   private final String databaseUri;
+  // Assuming keyspace name will match database name
+  private final String keySpace;
   private final int numGrpcChannels;
   private final Optional<Duration> maxCommitDelay;
   private AdapterClientWrapper adapterClientWrapper;
   private ServerSocket serverSocket;
   private ExecutorService executor;
   private boolean started = false;
+  private boolean sanitizeKeyspace = false;
 
   /**
    * Constructor for the Adapter class, specifying a specific address to bind to.
@@ -83,7 +91,8 @@ final class Adapter {
       InetAddress inetAddress,
       int port,
       int numGrpcChannels,
-      Optional<Duration> maxCommitDelay) {
+      Optional<Duration> maxCommitDelay,
+      boolean sanitizeKeyspace) {
     // TODO: Encapsulate arguments in an Options class to accomodate future fields without having to
     // pass them individually.
     this.host = host;
@@ -92,6 +101,16 @@ final class Adapter {
     this.port = port;
     this.numGrpcChannels = numGrpcChannels;
     this.maxCommitDelay = maxCommitDelay;
+    this.keySpace = "test-hyphen";
+    this.sanitizeKeyspace = sanitizeKeyspace;
+  }
+
+  public static String parseDatabaseName(String databaseUri) {
+    Preconditions.checkNotNull(databaseUri);
+    Map<String, String> parts = DATABASE_URI_TEMPLATE.match(databaseUri);
+    Preconditions.checkArgument(
+        parts != null, "Name should conform to pattern %s: %s", DATABASE_URI_TEMPLATE, databaseUri);
+    return parts.get("database");
   }
 
   /** Starts the adapter, initializing the local TCP server and handling client connections. */
@@ -177,7 +196,8 @@ final class Adapter {
       while (!Thread.currentThread().isInterrupted()) {
         final Socket clientSocket = serverSocket.accept();
         executor.execute(
-            new DriverConnectionHandler(clientSocket, adapterClientWrapper, maxCommitDelay));
+            new DriverConnectionHandler(
+                clientSocket, adapterClientWrapper, maxCommitDelay, keySpace, sanitizeKeyspace));
         LOG.info("Accepted client connection from: {}", clientSocket.getRemoteSocketAddress());
       }
     } catch (SocketException e) {

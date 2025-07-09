@@ -66,6 +66,7 @@ public class SpannerCassandraLauncher {
   private static final String DEFAULT_PORT = "9042";
   private static final String DEFAULT_NUM_GRPC_CHANNELS = "4";
   private static final String MAX_COMMIT_DELAY_PROP_KEY = "maxCommitDelayMillis";
+  private static final String SANITIZE_KEYSPACE_KEY = "sanitizeKeyspace";
 
   public static void main(String[] args) throws Exception {
     final String databaseUri = System.getProperty(DATABASE_URI_PROP_KEY);
@@ -86,6 +87,8 @@ public class SpannerCassandraLauncher {
       throw new IllegalArgumentException(
           "Spanner database URI not set. Please set it using -DdatabaseUri option.");
     }
+    final boolean sanitizeKeyspace =
+        Boolean.parseBoolean(System.getProperty(SANITIZE_KEYSPACE_KEY));
 
     Adapter adapter =
         new Adapter(
@@ -94,7 +97,8 @@ public class SpannerCassandraLauncher {
             inetAddress,
             port,
             numGrpcChannels,
-            maxCommitDelay);
+            maxCommitDelay,
+            sanitizeKeyspace);
 
     Runtime.getRuntime()
         .addShutdownHook(

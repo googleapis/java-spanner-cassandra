@@ -38,6 +38,7 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Field;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -47,11 +48,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Handles the connection from a driver, translating TCP data to gRPC requests and vice versa. */
-final class DriverConnectionHandler implements Runnable {
+public final class DriverConnectionHandler implements Runnable {
 
   private static final Logger LOG = LoggerFactory.getLogger(DriverConnectionHandler.class);
   private static final int HEADER_LENGTH = 9;
@@ -67,6 +70,9 @@ final class DriverConnectionHandler implements Runnable {
   private final Optional<String> maxCommitDelayMillis;
   private final GrpcCallContext defaultContext;
   private final GrpcCallContext defaultContextWithLAR;
+  private final String keySpace;
+  private final boolean hasHyphenInKeyspace;
+  private final boolean sanitizeKeyspace;
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
 
@@ -76,9 +82,16 @@ final class DriverConnectionHandler implements Runnable {
    * @param socket The client's socket.
    * @param adapterClientWrapper The adapter client wrapper used for gRPC communication.
    * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
+   * @param keySpace The corresponding keyspace name of this session(assuming it's same with
+   *     database name).
+   * @param sanitizeKeyspace Whether to sanitize invalid characters from keyspace
    */
   public DriverConnectionHandler(
-      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
+      Socket socket,
+      AdapterClientWrapper adapterClientWrapper,
+      Optional<Duration> maxCommitDelay,
+      String keySpace,
+      boolean sanitizeKeyspace) {
     this.socket = socket;
     this.adapterClientWrapper = adapterClientWrapper;
     this.defaultContext = GrpcCallContext.createDefault();
@@ -89,10 +102,13 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       this.maxCommitDelayMillis = Optional.empty();
     }
+    this.keySpace = keySpace;
+    this.hasHyphenInKeyspace = keySpace.contains("-");
+    this.sanitizeKeyspace = sanitizeKeyspace;
   }
 
   public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
-    this(socket, adapterClientWrapper, Optional.empty());
+    this(socket, adapterClientWrapper, Optional.empty(), "", false);
   }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
@@ -309,6 +325,20 @@ final class DriverConnectionHandler implements Runnable {
 
   private PreparePayloadResult prepareQueryMessage(Query message, Map<String, String> attachments) {
     ApiCallContext context;
+    if (hasHyphenInKeyspace && sanitizeKeyspace) {
+      try {
+        LOG.info("cql before sanitizing: " + message.query);
+        System.out.println("cql before sanitizing: " + message.query);
+        // Query.query is a final string so we can't directly alter it.
+        Field stringField = Query.class.getDeclaredField("query");
+        stringField.setAccessible(true);
+        stringField.set(message, sanitizeHyphenFromKeyspace(message.query, keySpace));
+        LOG.info("cql after sanitizing: " + message.query);
+        System.out.println("cql after sanitizing: " + message.query);
+      } catch (IllegalAccessException | IllegalArgumentException | NoSuchFieldException ex) {
+        throw new RuntimeException(ex);
+      }
+    }
     if (startsWith(message.query, "SELECT")) {
       context = defaultContext;
     } else {
@@ -333,5 +363,57 @@ final class DriverConnectionHandler implements Runnable {
 
   private static String constructKey(byte[] queryId) {
     return PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
+  }
+
+  /**
+   * Sanitizes a CQL query by removing hyphens from a known keyspace name.
+   *
+   * <p>It is case-insensitive in its matching of the keyspace name.
+   *
+   * @param cqlQuery The raw CQL query string.
+   * @param keyspaceWithHyphens The exact keyspace name that contains hyphens, e.g.,
+   *     "my-app-keyspace".
+   * @return A sanitized CQL query string.
+   */
+  public static String sanitizeHyphenFromKeyspace(String cqlQuery, String keyspaceWithHyphens) {
+    // --- Guard Clauses ---
+    if (cqlQuery == null || cqlQuery.isEmpty()) {
+      return cqlQuery;
+    }
+    if (keyspaceWithHyphens == null
+        || keyspaceWithHyphens.isEmpty()
+        || !keyspaceWithHyphens.contains("-")) {
+      return cqlQuery;
+    }
+
+    final String sanitizedKeyspace = keyspaceWithHyphens.replace("-", "_");
+
+    // This regex has two parts joined by an OR (|):
+    // 1. ('(?:''|[^'])*') : Group 1. Matches a complete CQL string literal.
+    // 2. (\b<keyspace_name>\b) : Group 2. Matches the keyspace name as a whole word.
+    final Pattern pattern =
+        Pattern.compile(
+            "('(?:''|[^'])*')|(\\b" + Pattern.quote(keyspaceWithHyphens) + "\\b)",
+            Pattern.CASE_INSENSITIVE);
+
+    Matcher matcher = pattern.matcher(cqlQuery);
+
+    StringBuffer sb = new StringBuffer();
+
+    while (matcher.find()) {
+      // Check if Group 2 (our keyspace) was the part that matched.
+      if (matcher.group(2) != null) {
+        // It was the keyspace, so append the sanitized version as the replacement.
+        matcher.appendReplacement(sb, Matcher.quoteReplacement(sanitizedKeyspace));
+      } else {
+        // It must have been Group 1 (the string literal).
+        // Append the original matched string literal, leaving it unchanged.
+        matcher.appendReplacement(sb, matcher.group(0));
+      }
+    }
+    // Append the remainder of the string from the last match to the end.
+    matcher.appendTail(sb);
+
+    return sb.toString();
   }
 }
