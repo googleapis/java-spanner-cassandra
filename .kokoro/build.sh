@@ -69,10 +69,23 @@ javadoc)
     mvn javadoc:javadoc javadoc:test-javadoc -B -ntp
     RETURN_CODE=$?
     ;;
-integration)
+integration-spanner)
     mvn -B ${INTEGRATION_TEST_ARGS} \
       -ntp \
       -Penable-integration-tests \
+      -Dbackend=spanner \
+      -DtrimStackTrace=false \
+      -Dclirr.skip=true \
+      -Denforcer.skip=true \
+      -fae \
+      verify
+    RETURN_CODE=$?
+    ;;
+integration-cassandra)
+    mvn -B ${INTEGRATION_TEST_ARGS} \
+      -ntp \
+      -Penable-integration-tests \
+      -Dbackend=cassandra \
       -DtrimStackTrace=false \
       -Dclirr.skip=true \
       -Denforcer.skip=true \

@@ -11,7 +11,7 @@ jobs:
     secrets: inherit
   
   # Need to rewrite the job here because there is no straightforward way to pass secrests to reusable workflows
-  daily_integration_run_devel:
+  daily_integration_run_spanner_devel:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -29,13 +29,13 @@ jobs:
     - run: java -version
     - run: .kokoro/build.sh
       env:
-        JOB_TYPE: integration
+        JOB_TYPE: integration-spanner
         INTEGRATION_TEST_INSTANCE: ${{secrets.INTEGRATION_TEST_INSTANCE}}
         SPANNER_ENDPOINT: ${{secrets.SPANNER_DEVEL_ENDPOINT}}
     
   notify_on_failure:
     runs-on: ubuntu-latest
-    needs: [daily_integration_run_prod, daily_integration_run_devel]
+    needs: [daily_integration_run_prod, daily_integration_run_spanner_devel]
     if: failure()
     permissions:
       issues: write
@@ -51,11 +51,11 @@ jobs:
                 body: `See [failed job](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
               });
             }
-            if ('${{ needs.daily_integration_run_devel.result }}' === 'failure') {
+            if ('${{ needs.daily_integration_run_spanner_devel.result }}' === 'failure') {
               github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: '🚨 [DEVEL] Daily integration tests against devel failed!',
+                title: '🚨 [DEVEL] Daily integration tests against Spanner devel failed!',
                 body: `See [failed job](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
               });
             }
