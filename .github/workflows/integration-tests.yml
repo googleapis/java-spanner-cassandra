@@ -9,7 +9,7 @@ on:
         required: true
 
 jobs:
-  integration:
+  integration-spanner:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -27,5 +27,22 @@ jobs:
     - run: java -version
     - run: .kokoro/build.sh
       env:
-        JOB_TYPE: integration
+        JOB_TYPE: integration-spanner
         INTEGRATION_TEST_INSTANCE: ${{secrets.INTEGRATION_TEST_INSTANCE}}
+  
+  integration-cassandra:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [11]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{matrix.java}}
+    - run: java -version
+    - run: .kokoro/build.sh
+      env:
+        JOB_TYPE: integration-cassandra
