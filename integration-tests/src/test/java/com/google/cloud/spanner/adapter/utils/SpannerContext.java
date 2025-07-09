@@ -31,7 +31,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +51,7 @@ public class SpannerContext extends DatabaseContext {
 
   public SpannerContext() {
     super("Spanner");
-    databaseId = "java_it_test_" + LocalDateTime.now().format(formatter);
+    databaseId = keyspace;
     final String instanceNameStr = System.getenv("INTEGRATION_TEST_INSTANCE");
     if (instanceNameStr == null) {
       throw new NullPointerException("Environment variable INTEGRATION_TEST_INSTANCE must be set");

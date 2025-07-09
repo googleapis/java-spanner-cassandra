@@ -33,7 +33,7 @@ import org.testcontainers.utility.DockerImageName;
  * keyspace.
  */
 public class CassandraContext extends DatabaseContext {
-  private static final DockerImageName CASSANDRA_IMAGE = DockerImageName.parse("cassandra:latest");
+  private static final DockerImageName CASSANDRA_IMAGE = DockerImageName.parse("cassandra:5.0.4");
   private static final int PORT = 9042;
 
   private CqlSession session;

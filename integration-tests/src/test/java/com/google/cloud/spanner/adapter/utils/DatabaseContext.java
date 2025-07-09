@@ -29,7 +29,7 @@ public abstract class DatabaseContext {
   protected static final DateTimeFormatter formatter =
       DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
   private final String name;
-  private final String keyspace;
+  protected final String keyspace;
 
   public DatabaseContext(String name) {
     this.name = name;

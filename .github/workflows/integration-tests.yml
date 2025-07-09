@@ -42,6 +42,9 @@ jobs:
       with:
         distribution: temurin
         java-version: ${{matrix.java}}
+    - uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.SPANNER_CASSANDRA_ADAPTER_CICD_SERVICE_ACCOUNT }}'
     - run: java -version
     - run: .kokoro/build.sh
       env:
