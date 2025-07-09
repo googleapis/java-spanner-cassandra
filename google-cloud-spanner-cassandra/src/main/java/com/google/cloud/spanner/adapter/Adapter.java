@@ -15,22 +15,6 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
-import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.SocketException;
-import java.time.Duration;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import javax.annotation.concurrent.NotThreadSafe;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.google.api.gax.core.GaxProperties;
 import com.google.api.gax.grpc.ChannelPoolSettings;
 import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
@@ -41,6 +25,19 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.common.base.Preconditions;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
+import java.time.Duration;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import javax.annotation.concurrent.NotThreadSafe;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Manages client connections, acting as an intermediary for communication with Spanner. */
 @NotThreadSafe
@@ -75,6 +72,7 @@ final class Adapter {
   private ServerSocket serverSocket;
   private ExecutorService executor;
   private boolean started = false;
+  private boolean sanitizeKeyspace = false;
 
   /**
    * Constructor for the Adapter class, specifying a specific address to bind to.
@@ -92,7 +90,8 @@ final class Adapter {
       InetAddress inetAddress,
       int port,
       int numGrpcChannels,
-      Optional<Duration> maxCommitDelay) {
+      Optional<Duration> maxCommitDelay,
+      boolean sanitizeKeyspace) {
     // TODO: Encapsulate arguments in an Options class to accomodate future fields without having to
     // pass them individually.
     this.host = host;
@@ -101,7 +100,8 @@ final class Adapter {
     this.port = port;
     this.numGrpcChannels = numGrpcChannels;
     this.maxCommitDelay = maxCommitDelay;
-    this.keySpace = parseDatabaseName(databaseUri);
+    this.keySpace = "test-hyphen";
+    this.sanitizeKeyspace = sanitizeKeyspace;
   }
 
   public static String parseDatabaseName(String databaseUri) {
@@ -191,7 +191,7 @@ final class Adapter {
         final Socket clientSocket = serverSocket.accept();
         executor.execute(
             new DriverConnectionHandler(
-                clientSocket, adapterClientWrapper, maxCommitDelay, keySpace));
+                clientSocket, adapterClientWrapper, maxCommitDelay, keySpace, sanitizeKeyspace));
         LOG.info("Accepted client connection from: {}", clientSocket.getRemoteSocketAddress());
       }
     } catch (SocketException e) {

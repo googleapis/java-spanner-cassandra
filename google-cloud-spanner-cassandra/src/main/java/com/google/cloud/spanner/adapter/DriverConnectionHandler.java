@@ -16,6 +16,23 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
+
+import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
+import com.datastax.oss.protocol.internal.Compressor;
+import com.datastax.oss.protocol.internal.Frame;
+import com.datastax.oss.protocol.internal.FrameCodec;
+import com.datastax.oss.protocol.internal.request.Batch;
+import com.datastax.oss.protocol.internal.request.Execute;
+import com.datastax.oss.protocol.internal.request.Query;
+import com.google.api.gax.grpc.GrpcCallContext;
+import com.google.api.gax.rpc.ApiCallContext;
+import com.google.common.collect.ImmutableMap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -33,27 +50,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
-import com.datastax.oss.protocol.internal.Compressor;
-import com.datastax.oss.protocol.internal.Frame;
-import com.datastax.oss.protocol.internal.FrameCodec;
-import com.datastax.oss.protocol.internal.request.Batch;
-import com.datastax.oss.protocol.internal.request.Execute;
-import com.datastax.oss.protocol.internal.request.Query;
-import com.google.api.gax.grpc.GrpcCallContext;
-import com.google.api.gax.rpc.ApiCallContext;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
-import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
-import com.google.common.collect.ImmutableMap;
-
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.Unpooled;
 
 /** Handles the connection from a driver, translating TCP data to gRPC requests and vice versa. */
 public final class DriverConnectionHandler implements Runnable {
@@ -74,6 +72,7 @@ public final class DriverConnectionHandler implements Runnable {
   private final GrpcCallContext defaultContextWithLAR;
   private final String keySpace;
   private final boolean hasHyphenInKeyspace;
+  private final boolean sanitizeKeyspace;
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
 
@@ -85,12 +84,14 @@ public final class DriverConnectionHandler implements Runnable {
    * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
    * @param keySpace The corresponding keyspace name of this session(assuming it's same with
    *     database name).
+   * @param sanitizeKeyspace Whether to sanitize invalid characters from keyspace
    */
   public DriverConnectionHandler(
       Socket socket,
       AdapterClientWrapper adapterClientWrapper,
       Optional<Duration> maxCommitDelay,
-      String keySpace) {
+      String keySpace,
+      boolean sanitizeKeyspace) {
     this.socket = socket;
     this.adapterClientWrapper = adapterClientWrapper;
     this.defaultContext = GrpcCallContext.createDefault();
@@ -103,10 +104,11 @@ public final class DriverConnectionHandler implements Runnable {
     }
     this.keySpace = keySpace;
     this.hasHyphenInKeyspace = keySpace.contains("-");
+    this.sanitizeKeyspace = sanitizeKeyspace;
   }
 
   public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
-    this(socket, adapterClientWrapper, Optional.empty(), "");
+    this(socket, adapterClientWrapper, Optional.empty(), "", false);
   }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
@@ -323,7 +325,7 @@ public final class DriverConnectionHandler implements Runnable {
 
   private PreparePayloadResult prepareQueryMessage(Query message, Map<String, String> attachments) {
     ApiCallContext context;
-    if (hasHyphenInKeyspace) {
+    if (hasHyphenInKeyspace && sanitizeKeyspace) {
       try {
         LOG.info("cql before sanitizing: " + message.query);
         System.out.println("cql before sanitizing: " + message.query);
