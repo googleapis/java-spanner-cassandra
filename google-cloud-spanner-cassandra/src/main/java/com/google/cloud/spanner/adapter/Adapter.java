@@ -29,6 +29,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -107,10 +108,15 @@ final class Adapter {
 
       channelProviderBuilder
           .setCredentials(credentials)
+          .setAllowNonDefaultServiceAccount(true)
           .setChannelPoolSettings(ChannelPoolSettings.staticallySized(numGrpcChannels));
 
       if (isEnableDirectPathXdsEnv()) {
         channelProviderBuilder.setAttemptDirectPath(true);
+        // This will let the credentials try to fetch a hard-bound access token if the runtime
+        // environment supports it.
+        channelProviderBuilder.setAllowHardBoundTokenTypes(
+            Collections.singletonList(InstantiatingGrpcChannelProvider.HardBoundTokenTypes.ALTS));
         channelProviderBuilder.setAttemptDirectPathXds();
       }
       HeaderProvider headerProvider =
