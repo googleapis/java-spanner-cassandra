@@ -109,7 +109,7 @@ public final class DriverConnectionHandlerTest {
     // Use a max commit delay of 100 ms.
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, Optional.of(Duration.ofMillis(100)));
+            mockSocket, mockAdapterClient, Optional.of(Duration.ofMillis(100)), "test");
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
@@ -179,7 +179,7 @@ public final class DriverConnectionHandlerTest {
     // Use a max commit delay of 100 ms.
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, Optional.of(Duration.ofMillis(100)));
+            mockSocket, mockAdapterClient, Optional.of(Duration.ofMillis(100)), "test");
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");

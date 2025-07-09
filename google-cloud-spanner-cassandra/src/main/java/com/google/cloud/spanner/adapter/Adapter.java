@@ -15,26 +15,32 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
-import com.google.api.gax.core.GaxProperties;
-import com.google.api.gax.grpc.ChannelPoolSettings;
-import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
-import com.google.api.gax.rpc.FixedHeaderProvider;
-import com.google.api.gax.rpc.HeaderProvider;
-import com.google.auth.oauth2.GoogleCredentials;
-import com.google.spanner.adapter.v1.AdapterClient;
-import com.google.spanner.adapter.v1.AdapterSettings;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
 import javax.annotation.concurrent.NotThreadSafe;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.api.gax.core.GaxProperties;
+import com.google.api.gax.grpc.ChannelPoolSettings;
+import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
+import com.google.api.gax.rpc.FixedHeaderProvider;
+import com.google.api.gax.rpc.HeaderProvider;
+import com.google.api.pathtemplate.PathTemplate;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.common.base.Preconditions;
+import com.google.spanner.adapter.v1.AdapterClient;
+import com.google.spanner.adapter.v1.AdapterSettings;
 
 /** Manages client connections, acting as an intermediary for communication with Spanner. */
 @NotThreadSafe
@@ -54,11 +60,15 @@ final class Adapter {
           + "/v"
           + CLIENT_VERSION
           + GaxProperties.getLibraryVersion(Adapter.class);
+  private static final PathTemplate DATABASE_URI_TEMPLATE =
+      PathTemplate.create("projects/{project}/instances/{instance}/databases/{database}");
 
   private final InetAddress inetAddress;
   private final int port;
   private final String host;
   private final String databaseUri;
+  // Assuming keyspace name will match database name
+  private final String keySpace;
   private final int numGrpcChannels;
   private final Optional<Duration> maxCommitDelay;
   private AdapterClientWrapper adapterClientWrapper;
@@ -91,6 +101,15 @@ final class Adapter {
     this.port = port;
     this.numGrpcChannels = numGrpcChannels;
     this.maxCommitDelay = maxCommitDelay;
+    this.keySpace = parseDatabaseName(databaseUri);
+  }
+
+  public static String parseDatabaseName(String databaseUri) {
+    Preconditions.checkNotNull(databaseUri);
+    Map<String, String> parts = DATABASE_URI_TEMPLATE.match(databaseUri);
+    Preconditions.checkArgument(
+        parts != null, "Name should conform to pattern %s: %s", DATABASE_URI_TEMPLATE, databaseUri);
+    return parts.get("database");
   }
 
   /** Starts the adapter, initializing the local TCP server and handling client connections. */
@@ -171,7 +190,8 @@ final class Adapter {
       while (!Thread.currentThread().isInterrupted()) {
         final Socket clientSocket = serverSocket.accept();
         executor.execute(
-            new DriverConnectionHandler(clientSocket, adapterClientWrapper, maxCommitDelay));
+            new DriverConnectionHandler(
+                clientSocket, adapterClientWrapper, maxCommitDelay, keySpace));
         LOG.info("Accepted client connection from: {}", clientSocket.getRemoteSocketAddress());
       }
     } catch (SocketException e) {
