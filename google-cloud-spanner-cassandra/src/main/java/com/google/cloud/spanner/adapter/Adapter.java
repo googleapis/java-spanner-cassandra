@@ -15,16 +15,6 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
-import com.google.api.gax.core.GaxProperties;
-import com.google.api.gax.grpc.ChannelPoolSettings;
-import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
-import com.google.api.gax.rpc.FixedHeaderProvider;
-import com.google.api.gax.rpc.HeaderProvider;
-import com.google.api.pathtemplate.PathTemplate;
-import com.google.auth.oauth2.GoogleCredentials;
-import com.google.common.base.Preconditions;
-import com.google.spanner.adapter.v1.AdapterClient;
-import com.google.spanner.adapter.v1.AdapterSettings;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -35,9 +25,22 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
 import javax.annotation.concurrent.NotThreadSafe;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.api.gax.core.GaxProperties;
+import com.google.api.gax.grpc.ChannelPoolSettings;
+import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
+import com.google.api.gax.rpc.FixedHeaderProvider;
+import com.google.api.gax.rpc.HeaderProvider;
+import com.google.api.pathtemplate.PathTemplate;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.common.base.Preconditions;
+import com.google.spanner.adapter.v1.AdapterClient;
+import com.google.spanner.adapter.v1.AdapterSettings;
 
 /** Manages client connections, acting as an intermediary for communication with Spanner. */
 @NotThreadSafe
@@ -100,7 +103,7 @@ final class Adapter {
     this.port = port;
     this.numGrpcChannels = numGrpcChannels;
     this.maxCommitDelay = maxCommitDelay;
-    this.keySpace = "test-hyphen";
+    this.keySpace = parseDatabaseName(databaseUri);
     this.sanitizeKeyspace = sanitizeKeyspace;
   }
 

@@ -16,10 +16,11 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import com.google.api.gax.rpc.ApiCallContext;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+
+import com.google.api.gax.rpc.ApiCallContext;
 
 /**
  * An object used to encapsulate the result of preparing the Adapter payload prior to sending the
@@ -29,6 +30,8 @@ public class PreparePayloadResult {
   private ApiCallContext context;
   private Map<String, String> attachments;
   private Optional<byte[]> attachmentErrorResponse;
+  // TODO: remove after server fix rolled out
+  public byte[] sanitizedPayload;
   private static final Map<String, String> EMPTY_ATTACHMENTS = Collections.emptyMap();
 
   public PreparePayloadResult(
@@ -38,6 +41,10 @@ public class PreparePayloadResult {
     this.context = context;
     this.attachments = attachments;
     this.attachmentErrorResponse = attachmentErrorResponse;
+  }
+
+  public void setSanitizedPayload(byte[] payload) {
+    this.sanitizedPayload = payload;
   }
 
   public PreparePayloadResult(ApiCallContext context, Map<String, String> attachments) {

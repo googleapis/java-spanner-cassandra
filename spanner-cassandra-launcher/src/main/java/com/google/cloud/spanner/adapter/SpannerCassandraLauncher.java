@@ -19,6 +19,7 @@ package com.google.cloud.spanner.adapter;
 import java.net.InetAddress;
 import java.time.Duration;
 import java.util.Optional;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,7 +58,8 @@ import org.slf4j.LoggerFactory;
  */
 public class SpannerCassandraLauncher {
   private static final Logger LOG = LoggerFactory.getLogger(SpannerCassandraLauncher.class);
-  private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
+  private static final String DEFAULT_SPANNER_ENDPOINT =
+      "preprod-spanner.sandbox.googleapis.com:443";
   private static final String DATABASE_URI_PROP_KEY = "databaseUri";
   private static final String HOST_PROP_KEY = "host";
   private static final String PORT_PROP_KEY = "port";

@@ -16,23 +16,6 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
-import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
-
-import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
-import com.datastax.oss.protocol.internal.Compressor;
-import com.datastax.oss.protocol.internal.Frame;
-import com.datastax.oss.protocol.internal.FrameCodec;
-import com.datastax.oss.protocol.internal.request.Batch;
-import com.datastax.oss.protocol.internal.request.Execute;
-import com.datastax.oss.protocol.internal.request.Query;
-import com.google.api.gax.grpc.GrpcCallContext;
-import com.google.api.gax.rpc.ApiCallContext;
-import com.google.common.collect.ImmutableMap;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.Unpooled;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -50,8 +33,27 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
+import com.datastax.oss.protocol.internal.Compressor;
+import com.datastax.oss.protocol.internal.Frame;
+import com.datastax.oss.protocol.internal.FrameCodec;
+import com.datastax.oss.protocol.internal.request.Batch;
+import com.datastax.oss.protocol.internal.request.Execute;
+import com.datastax.oss.protocol.internal.request.Query;
+import com.google.api.gax.grpc.GrpcCallContext;
+import com.google.api.gax.rpc.ApiCallContext;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
+import com.google.common.collect.ImmutableMap;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 
 /** Handles the connection from a driver, translating TCP data to gRPC requests and vice versa. */
 public final class DriverConnectionHandler implements Runnable {
@@ -65,6 +67,8 @@ public final class DriverConnectionHandler implements Runnable {
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
+  private static final FrameCodec<ByteBuf> clientFrameCodec =
+      FrameCodec.defaultClient(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
   private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
@@ -150,6 +154,11 @@ public final class DriverConnectionHandler implements Runnable {
 
         // 3. Prepare the payload.
         PreparePayloadResult prepareResult = preparePayload(payload);
+        // If there exists a sanitized payload after removing hyphens in keyspace, replace current
+        // payload.
+        if (prepareResult.sanitizedPayload != null) {
+          payload = prepareResult.sanitizedPayload;
+        }
         response = prepareResult.getAttachmentErrorResponse();
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
@@ -283,7 +292,7 @@ public final class DriverConnectionHandler implements Runnable {
     } else if (frame.message instanceof Batch) {
       return prepareBatchMessage((Batch) frame.message, attachments);
     } else if (frame.message instanceof Query) {
-      return prepareQueryMessage((Query) frame.message, attachments);
+      return prepareQueryMessage(frame, attachments);
     } else {
       return new PreparePayloadResult(defaultContext);
     }
@@ -323,18 +332,17 @@ public final class DriverConnectionHandler implements Runnable {
     return new PreparePayloadResult(defaultContextWithLAR, attachments, attachmentErrorResponse);
   }
 
-  private PreparePayloadResult prepareQueryMessage(Query message, Map<String, String> attachments) {
+  private PreparePayloadResult prepareQueryMessage(Frame frame, Map<String, String> attachments) {
     ApiCallContext context;
-    if (hasHyphenInKeyspace && sanitizeKeyspace) {
+    boolean hasSanitizedPayload = false;
+    Query message = (Query) frame.message;
+    if (hasHyphenInKeyspace && sanitizeKeyspace && message.query.contains(keySpace)) {
       try {
-        LOG.info("cql before sanitizing: " + message.query);
-        System.out.println("cql before sanitizing: " + message.query);
         // Query.query is a final string so we can't directly alter it.
         Field stringField = Query.class.getDeclaredField("query");
         stringField.setAccessible(true);
         stringField.set(message, sanitizeHyphenFromKeyspace(message.query, keySpace));
-        LOG.info("cql after sanitizing: " + message.query);
-        System.out.println("cql after sanitizing: " + message.query);
+        hasSanitizedPayload = true;
       } catch (IllegalAccessException | IllegalArgumentException | NoSuchFieldException ex) {
         throw new RuntimeException(ex);
       }
@@ -347,7 +355,16 @@ public final class DriverConnectionHandler implements Runnable {
         attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
       }
     }
-    return new PreparePayloadResult(context, attachments);
+    PreparePayloadResult res = new PreparePayloadResult(context, attachments);
+    if (hasSanitizedPayload) {
+      ByteBuf sanitizedPayloadBuf = clientFrameCodec.encode(frame);
+      int size = sanitizedPayloadBuf.readableBytes();
+      byte[] sanitizedPayloadArr = new byte[size];
+      sanitizedPayloadBuf.getBytes(sanitizedPayloadBuf.readerIndex(), sanitizedPayloadArr);
+      sanitizedPayloadBuf.release();
+      res.setSanitizedPayload(sanitizedPayloadArr);
+    }
+    return res;
   }
 
   private Optional<byte[]> prepareAttachmentForQueryId(
@@ -386,32 +403,41 @@ public final class DriverConnectionHandler implements Runnable {
       return cqlQuery;
     }
 
-    final String sanitizedKeyspace = keyspaceWithHyphens.replace("-", "_");
+    final String sanitizedKeyspaceContent = keyspaceWithHyphens.replace("-", "_");
 
-    // This regex has two parts joined by an OR (|):
-    // 1. ('(?:''|[^'])*') : Group 1. Matches a complete CQL string literal.
-    // 2. (\b<keyspace_name>\b) : Group 2. Matches the keyspace name as a whole word.
+    // 1. ('(?:''|[^'])*')     : Group 1: A single-quoted string literal to be ignored.
+    // 2. (\"<keyspace>\")        : Group 2: A double-quoted identifier to be sanitized.
+    // 3. (\b<keyspace>(?=...)) : Group 3: An unquoted identifier to be sanitized.
     final Pattern pattern =
         Pattern.compile(
-            "('(?:''|[^'])*')|(\\b" + Pattern.quote(keyspaceWithHyphens) + "\\b)",
+            "('(?:''|[^'])*')|(\""
+                + Pattern.quote(keyspaceWithHyphens)
+                + "\")|(\\b"
+                + Pattern.quote(keyspaceWithHyphens)
+                + "(?=[\\s.;]|$))",
             Pattern.CASE_INSENSITIVE);
 
     Matcher matcher = pattern.matcher(cqlQuery);
-
     StringBuffer sb = new StringBuffer();
 
     while (matcher.find()) {
-      // Check if Group 2 (our keyspace) was the part that matched.
       if (matcher.group(2) != null) {
-        // It was the keyspace, so append the sanitized version as the replacement.
-        matcher.appendReplacement(sb, Matcher.quoteReplacement(sanitizedKeyspace));
+        // Case 2: Matched a double-quoted keyspace, e.g., "my-app-keyspace"
+        // We must replace it with the sanitized content wrapped in quotes.
+        String replacement = "\"" + sanitizedKeyspaceContent + "\"";
+        matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+
+      } else if (matcher.group(3) != null) {
+        // Case 3: Matched an unquoted keyspace, e.g., my-app-keyspace
+        // We replace it with just the sanitized content.
+        matcher.appendReplacement(sb, Matcher.quoteReplacement(sanitizedKeyspaceContent));
+
       } else {
-        // It must have been Group 1 (the string literal).
-        // Append the original matched string literal, leaving it unchanged.
+        // Case 1 (or no match for group 2/3): Matched a single-quoted literal.
+        // Append it unchanged.
         matcher.appendReplacement(sb, matcher.group(0));
       }
     }
-    // Append the remainder of the string from the last match to the end.
     matcher.appendTail(sb);
 
     return sb.toString();

@@ -107,6 +107,13 @@ public final class KeySpaceSanitizerTest {
   }
 
   @Test
+  public void testShouldNotMatchPartialNames() {
+    String keyspace = "my-keyspace";
+    String originalQuery = "SELECT * FROM my-keyspace-backup.users WHERE name = 'value';";
+    assertEquals(originalQuery, sanitizeHyphenFromKeyspace(originalQuery, keyspace));
+  }
+
+  @Test
   public void testShouldHandleMultipleOccurrences() {
     String keyspace = "ks-1";
     String originalQuery = "USE ks-1; SELECT * FROM ks-1.table1; UPDATE ks-1.table2 SET col=1;";
@@ -128,5 +135,21 @@ public final class KeySpaceSanitizerTest {
     String query = "SELECT * FROM ks-1.t";
     assertEquals(query, sanitizeHyphenFromKeyspace(query, null));
     assertEquals(query, sanitizeHyphenFromKeyspace(query, ""));
+  }
+
+  @Test
+  public void testShouldNotSanitizeKeyspaceWithinStringLiteralContent() {
+    String keyspace = "my-key-space";
+    String originalQuery = "UPDATE config.table SET value = '  my-key-space  ' WHERE id = 1;";
+    String sanitized = sanitizeHyphenFromKeyspace(originalQuery, keyspace);
+    assertEquals(originalQuery, sanitized);
+  }
+
+  @Test
+  public void testShouldNotSanitizeDoubleQuotedKeyspaceWithinStringLiteralContent() {
+    String keyspace = "my-key-space";
+    String originalQuery = "UPDATE config.table SET value = '\"my-key-space\"' WHERE id = 1;";
+    String sanitized = sanitizeHyphenFromKeyspace(originalQuery, keyspace);
+    assertEquals(originalQuery, sanitized);
   }
 }
