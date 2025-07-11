@@ -98,7 +98,7 @@ final class DriverConnectionHandler implements Runnable {
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
   @Override
   public void run() {
-    LOG.info("Handling connection from: {}", socket.getRemoteSocketAddress());
+    LOG.debug("Handling connection from: {}", socket.getRemoteSocketAddress());
 
     try (BufferedInputStream inputStream = new BufferedInputStream(socket.getInputStream());
         BufferedOutputStream outputStream = new BufferedOutputStream(socket.getOutputStream())) {

@@ -178,7 +178,7 @@ final class Adapter {
         final Socket clientSocket = serverSocket.accept();
         executor.execute(
             new DriverConnectionHandler(clientSocket, adapterClientWrapper, maxCommitDelay));
-        LOG.info("Accepted client connection from: {}", clientSocket.getRemoteSocketAddress());
+        LOG.debug("Accepted client connection from: {}", clientSocket.getRemoteSocketAddress());
       }
     } catch (SocketException e) {
       if (!serverSocket.isClosed()) {
