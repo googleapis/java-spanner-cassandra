@@ -37,7 +37,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -70,6 +69,7 @@ public final class AdapterClientWrapperTest {
 
   @Test
   public void sendGrpcRequest_SuccessfulResponse() {
+    int streamId = 1;
     byte[] payload = "test payload".getBytes();
     Map<String, String> stateUpdates = new HashMap<>();
     stateUpdates.put("k1", "v1");
@@ -89,7 +89,8 @@ public final class AdapterClientWrapperTest {
             .build();
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
 
-    byte[] response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context).get();
+    byte[] response =
+        adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context, streamId);
 
     verify(mockCallable).call(expectedRequest, context);
     assertThat(response).isEqualTo("test response".getBytes());
@@ -99,6 +100,7 @@ public final class AdapterClientWrapperTest {
 
   @Test
   public void sendGrpcRequest_MultipleResponses() {
+    int streamId = 1;
     byte[] payload = "test payload".getBytes();
     Map<String, String> stateUpdates1 = new HashMap<>();
     stateUpdates1.put("k1", "v1");
@@ -129,7 +131,8 @@ public final class AdapterClientWrapperTest {
             .setPayload(ByteString.copyFrom(payload))
             .build();
 
-    byte[] response = adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context).get();
+    byte[] response =
+        adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context, streamId);
 
     verify(mockCallable).call(expectedRequest, context);
     assertThat(response).isEqualTo("test header test response 1 test response 2".getBytes());
@@ -140,6 +143,7 @@ public final class AdapterClientWrapperTest {
 
   @Test
   public void sendGrpcRequest_NoResponse() {
+    int streamId = 1;
     byte[] payload = "test payload".getBytes();
     Iterator<AdaptMessageResponse> mockResponseIterator = Collections.emptyIterator();
     AdaptMessageRequest expectedRequest =
@@ -151,15 +155,15 @@ public final class AdapterClientWrapperTest {
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
     when(mockSession.getName()).thenReturn("test-session");
 
-    Optional<byte[]> response =
-        adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context);
+    byte[] response =
+        adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context, streamId);
 
     verify(mockCallable).call(expectedRequest, context);
-    assertThat(!response.isPresent());
   }
 
   @Test
   public void sendGrpcRequest_SessionCreationFailure() {
+    int streamId = 1;
     byte[] payload = "test payload".getBytes();
     when(mockSessionManager.getSession()).thenThrow(new RuntimeException());
 
@@ -167,6 +171,6 @@ public final class AdapterClientWrapperTest {
         RuntimeException.class,
         () ->
             adapterClientWrapper.sendGrpcRequest(
-                payload, new HashMap<>(), GrpcCallContext.createDefault()));
+                payload, new HashMap<>(), GrpcCallContext.createDefault(), streamId));
   }
 }

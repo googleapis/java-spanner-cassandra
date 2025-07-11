@@ -69,6 +69,7 @@ final class DriverConnectionHandler implements Runnable {
   private final GrpcCallContext defaultContextWithLAR;
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
+  private static final int defaultStreamId = -1;
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -122,7 +123,8 @@ final class DriverConnectionHandler implements Runnable {
       throws IOException {
     // Keep processing until End-Of-Stream is reached on the input
     while (true) {
-      Optional<byte[]> response;
+      byte[] responseToWrite;
+      int streamId = defaultStreamId; // Initialize with a default value.
       try {
         // 1. Read and construct the payload from the input stream
         byte[] payload = constructPayload(inputStream);
@@ -134,40 +136,27 @@ final class DriverConnectionHandler implements Runnable {
 
         // 3. Prepare the payload.
         PreparePayloadResult prepareResult = preparePayload(payload);
-        response = prepareResult.getAttachmentErrorResponse();
+        streamId = prepareResult.getStreamId();
+        Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
         if (!response.isPresent()) {
-          response =
+          responseToWrite =
               adapterClientWrapper.sendGrpcRequest(
-                  payload, prepareResult.getAttachments(), prepareResult.getContext());
+                  payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
           // Now response holds the gRPC result, which might still be empty.
+        } else {
+          responseToWrite = response.get();
         }
-
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
         LOG.error("Error processing request: ", e);
-        response =
-            Optional.of(
-                serverErrorResponse("Server error during request processing: " + e.getMessage()));
+        responseToWrite =
+            serverErrorResponse(
+                streamId, "Server error during request processing: " + e.getMessage());
       }
 
-      // 6. Determine the final response byte array to write.
-      // If response is empty at this point, it means:
-      //   a) Attachment processing completed successfully without an immediate response.
-      //   b) The gRPC call was made.
-      //   c) The gRPC call itself returned an empty Optional (e.g., server timeout, no specific
-      // data).
-      // In this case, generate a default "No response" error.
-      byte[] responseToWrite =
-          response.orElseGet(
-              () -> {
-                LOG.warn("No response received from the backend server.");
-                return serverErrorResponse("No response received from the server.");
-              });
-
-      // 7. Write the determined response (success or error) to the output stream.
       outputStream.write(responseToWrite);
       outputStream.flush();
     }
@@ -263,18 +252,18 @@ final class DriverConnectionHandler implements Runnable {
 
     Map<String, String> attachments = new HashMap<>();
     if (frame.message instanceof Execute) {
-      return prepareExecuteMessage((Execute) frame.message, attachments);
+      return prepareExecuteMessage((Execute) frame.message, frame.streamId, attachments);
     } else if (frame.message instanceof Batch) {
-      return prepareBatchMessage((Batch) frame.message, attachments);
+      return prepareBatchMessage((Batch) frame.message, frame.streamId, attachments);
     } else if (frame.message instanceof Query) {
-      return prepareQueryMessage((Query) frame.message, attachments);
+      return prepareQueryMessage((Query) frame.message, frame.streamId, attachments);
     } else {
-      return new PreparePayloadResult(defaultContext);
+      return new PreparePayloadResult(defaultContext, frame.streamId);
     }
   }
 
   private PreparePayloadResult prepareExecuteMessage(
-      Execute message, Map<String, String> attachments) {
+      Execute message, int streamId, Map<String, String> attachments) {
     ApiCallContext context;
     if (message.queryId != null
         && message.queryId.length > 0
@@ -286,15 +275,18 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       context = defaultContext;
     }
-    Optional<byte[]> errorResponse = prepareAttachmentForQueryId(attachments, message.queryId);
-    return new PreparePayloadResult(context, attachments, errorResponse);
+    Optional<byte[]> errorResponse =
+        prepareAttachmentForQueryId(streamId, attachments, message.queryId);
+    return new PreparePayloadResult(context, streamId, attachments, errorResponse);
   }
 
-  private PreparePayloadResult prepareBatchMessage(Batch message, Map<String, String> attachments) {
+  private PreparePayloadResult prepareBatchMessage(
+      Batch message, int streamId, Map<String, String> attachments) {
     Optional<byte[]> attachmentErrorResponse = Optional.empty();
     for (Object obj : message.queriesOrIds) {
       if (obj instanceof byte[]) {
-        Optional<byte[]> errorResponse = prepareAttachmentForQueryId(attachments, (byte[]) obj);
+        Optional<byte[]> errorResponse =
+            prepareAttachmentForQueryId(streamId, attachments, (byte[]) obj);
         if (errorResponse.isPresent()) {
           attachmentErrorResponse = errorResponse;
           break;
@@ -304,10 +296,12 @@ final class DriverConnectionHandler implements Runnable {
     if (maxCommitDelayMillis.isPresent()) {
       attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
     }
-    return new PreparePayloadResult(defaultContextWithLAR, attachments, attachmentErrorResponse);
+    return new PreparePayloadResult(
+        defaultContextWithLAR, streamId, attachments, attachmentErrorResponse);
   }
 
-  private PreparePayloadResult prepareQueryMessage(Query message, Map<String, String> attachments) {
+  private PreparePayloadResult prepareQueryMessage(
+      Query message, int streamId, Map<String, String> attachments) {
     ApiCallContext context;
     if (startsWith(message.query, "SELECT")) {
       context = defaultContext;
@@ -317,15 +311,15 @@ final class DriverConnectionHandler implements Runnable {
         attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
       }
     }
-    return new PreparePayloadResult(context, attachments);
+    return new PreparePayloadResult(context, streamId, attachments);
   }
 
   private Optional<byte[]> prepareAttachmentForQueryId(
-      Map<String, String> attachments, byte[] queryId) {
+      int streamId, Map<String, String> attachments, byte[] queryId) {
     String key = constructKey(queryId);
     Optional<String> val = adapterClientWrapper.getAttachmentsCache().get(key);
     if (!val.isPresent()) {
-      return Optional.of(unpreparedResponse(queryId));
+      return Optional.of(unpreparedResponse(streamId, queryId));
     }
     attachments.put(key, val.get());
     return Optional.empty();

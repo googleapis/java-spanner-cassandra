@@ -23,6 +23,7 @@ import com.datastax.oss.protocol.internal.FrameCodec;
 import com.datastax.oss.protocol.internal.ProtocolConstants.ErrorCode;
 import com.datastax.oss.protocol.internal.response.Error;
 import com.datastax.oss.protocol.internal.response.error.Unprepared;
+import com.google.api.core.InternalApi;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import java.util.Collections;
@@ -37,6 +38,7 @@ import java.util.Collections;
  *
  * <p>This class cannot be instantiated.
  */
+@InternalApi
 public final class ErrorMessageUtils {
 
   private static final int PROTOCOL_VERSION = 4;
@@ -51,35 +53,38 @@ public final class ErrorMessageUtils {
   /**
    * Creates an unprepared error message response.
    *
+   * @param streamId The stream id of the message.
    * @param queryId The query ID associated with the error.
    * @return A byte array representing the unprepared error response.
    */
-  public static byte[] unpreparedResponse(byte[] queryId) {
+  public static byte[] unpreparedResponse(int streamId, byte[] queryId) {
     Unprepared errorMsg = new Unprepared("Unprepared", queryId);
-    return errorResponse(errorMsg);
+    return errorResponse(streamId, errorMsg);
   }
 
   /**
    * Creates a server error message response.
    *
+   * @param streamId The stream id of the message.
    * @param message The error message.
    * @return A byte array representing the server error response.
    */
-  public static byte[] serverErrorResponse(String message) {
+  public static byte[] serverErrorResponse(int streamId, String message) {
     Error errorMsg = new Error(ErrorCode.SERVER_ERROR, message);
-    return errorResponse(errorMsg);
+    return errorResponse(streamId, errorMsg);
   }
 
   /**
    * Creates an error response frame and converts it to a byte array.
    *
+   * @param streamId The stream id of the message.
    * @param errorMsg The Error object containing the error details.
    * @return A byte array representing the error response.
    */
-  public static byte[] errorResponse(Error errorMsg) {
+  public static byte[] errorResponse(int streamId, Error errorMsg) {
     Frame responseFrame =
         Frame.forResponse(
-            PROTOCOL_VERSION, -1, null, Frame.NO_PAYLOAD, Collections.emptyList(), errorMsg);
+            PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, Collections.emptyList(), errorMsg);
     ByteBuf responseBuf = serverFrameCodec.encode(responseFrame);
     return convertByteBufToByteArray(responseBuf);
   }
