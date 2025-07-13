@@ -93,7 +93,7 @@
                                 <include>**/*IT.java</include>
                                 <include>**/IT*.java</include>
                             </includes>
-                            <forkCount>25</forkCount>
+                            <forkCount>8</forkCount>
                             <reuseForks>true</reuseForks>
                         </configuration>
                     </plugin>
