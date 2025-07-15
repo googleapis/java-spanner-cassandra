@@ -207,7 +207,7 @@ public final class SpannerCqlSessionBuilder
   private void createAndStartAdapter() {
 
     AdapterOptions adapterOptions =
-        new AdapterOptions.Builder()
+        AdapterOptions.newBuilder()
             .spannerEndpoint(host)
             .tcpPort(port)
             .inetAddress(iNetAddress)

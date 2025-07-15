@@ -19,13 +19,14 @@ import java.net.InetAddress;
 import java.time.Duration;
 import java.util.Optional;
 
-/* Builder class for creating an instance of {@link AdapterOptions}. */
+/** Options for creating the {@link Adapter}. */
 class AdapterOptions {
 
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
   private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
 
-  public static class Builder {
+  /** Builder class for creating an instance of {@link AdapterOptions}. */
+  static class Builder {
     String spannerEndpoint = DEFAULT_SPANNER_ENDPOINT;
     int tcpPort;
     InetAddress inetAddress;
@@ -33,44 +34,43 @@ class AdapterOptions {
     int numGrpcChannels = DEFAULT_NUM_GRPC_CHANNELS;
     Optional<Duration> maxCommitDelay = Optional.empty();
 
-    public Builder() {}
-
-    public Builder spannerEndpoint(String spannerEndpoint) {
+    /** The Cloud Spanner endpoint. */
+    Builder spannerEndpoint(String spannerEndpoint) {
       this.spannerEndpoint = spannerEndpoint;
       return this;
     }
 
     /** The local TCP port number that the adapter server should listen on. */
-    public Builder tcpPort(int tcpPort) {
+    Builder tcpPort(int tcpPort) {
       this.tcpPort = tcpPort;
       return this;
     }
 
     /** The specific local {@link InetAddress} for the server socket to bind to. */
-    public Builder inetAddress(InetAddress inetAddress) {
+    Builder inetAddress(InetAddress inetAddress) {
       this.inetAddress = inetAddress;
       return this;
     }
 
     /** The URI of the Cloud Spanner database to connect to. */
-    public Builder databaseUri(String databaseUri) {
+    Builder databaseUri(String databaseUri) {
       this.databaseUri = databaseUri;
       return this;
     }
 
     /** (Optional) The number of gRPC channels to use for connections to Cloud Spanner. */
-    public Builder numGrpcChannels(int numGrpcChannels) {
+    Builder numGrpcChannels(int numGrpcChannels) {
       this.numGrpcChannels = numGrpcChannels;
       return this;
     }
 
     /** (Optional) The max commit delay to set in requests to optimize write throughput. */
-    public Builder maxCommitDelay(Duration maxCommitDelay) {
+    Builder maxCommitDelay(Duration maxCommitDelay) {
       this.maxCommitDelay = Optional.ofNullable(maxCommitDelay);
       return this;
     }
 
-    public AdapterOptions build() {
+    AdapterOptions build() {
       return new AdapterOptions(this);
     }
   }
@@ -89,6 +89,10 @@ class AdapterOptions {
     this.databaseUri = builder.databaseUri;
     this.numGrpcChannels = builder.numGrpcChannels;
     this.maxCommitDelay = builder.maxCommitDelay;
+  }
+
+  static Builder newBuilder() {
+    return new Builder();
   }
 
   String getSpannerEndpoint() {
