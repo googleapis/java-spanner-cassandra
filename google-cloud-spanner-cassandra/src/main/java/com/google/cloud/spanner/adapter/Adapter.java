@@ -176,6 +176,7 @@ final class Adapter {
     try {
       while (!Thread.currentThread().isInterrupted()) {
         final Socket clientSocket = serverSocket.accept();
+        clientSocket.setTcpNoDelay(true);
         executor.execute(
             new DriverConnectionHandler(clientSocket, adapterClientWrapper, maxCommitDelay));
         LOG.debug("Accepted client connection from: {}", clientSocket.getRemoteSocketAddress());
