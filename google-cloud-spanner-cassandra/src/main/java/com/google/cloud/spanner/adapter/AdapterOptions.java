@@ -15,6 +15,8 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
+import com.google.api.gax.rpc.TransportChannelProvider;
+import com.google.auth.Credentials;
 import java.net.InetAddress;
 import java.time.Duration;
 import java.util.Optional;
@@ -33,6 +35,8 @@ class AdapterOptions {
     String databaseUri;
     int numGrpcChannels = DEFAULT_NUM_GRPC_CHANNELS;
     Optional<Duration> maxCommitDelay = Optional.empty();
+    private TransportChannelProvider channelProvider = null;
+    private Credentials credentials;
 
     /** The Cloud Spanner endpoint. */
     Builder spannerEndpoint(String spannerEndpoint) {
@@ -70,6 +74,24 @@ class AdapterOptions {
       return this;
     }
 
+    /**
+     * (Optional) The gRPC channel provider. If set to null or not specified, one will be created by
+     * default.
+     */
+    Builder channelProvider(TransportChannelProvider channelProvider) {
+      this.channelProvider = channelProvider;
+      return this;
+    }
+
+    /**
+     * (Optional) The Google Cloud credentials for accessing Cloud Spanner. If set to null or not
+     * specified, the application default credentials will be used.
+     */
+    Builder credentials(Credentials credentials) {
+      this.credentials = credentials;
+      return this;
+    }
+
     AdapterOptions build() {
       return new AdapterOptions(this);
     }
@@ -81,6 +103,8 @@ class AdapterOptions {
   private final String databaseUri;
   private final int numGrpcChannels;
   private final Optional<Duration> maxCommitDelay;
+  private TransportChannelProvider channelProvider;
+  private Credentials credentials;
 
   private AdapterOptions(Builder builder) {
     this.spannerEndpoint = builder.spannerEndpoint;
@@ -89,6 +113,8 @@ class AdapterOptions {
     this.databaseUri = builder.databaseUri;
     this.numGrpcChannels = builder.numGrpcChannels;
     this.maxCommitDelay = builder.maxCommitDelay;
+    this.channelProvider = builder.channelProvider;
+    this.credentials = builder.credentials;
   }
 
   static Builder newBuilder() {
@@ -113,6 +139,14 @@ class AdapterOptions {
 
   int getNumGrpcChannels() {
     return numGrpcChannels;
+  }
+
+  TransportChannelProvider getChannelProvider() {
+    return channelProvider;
+  }
+
+  Credentials getCredentials() {
+    return credentials;
   }
 
   Optional<Duration> getMaxCommitDelay() {

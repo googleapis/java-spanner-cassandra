@@ -19,6 +19,8 @@ package com.google.cloud.spanner.adapter;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.session.SessionBuilder;
+import com.google.api.gax.rpc.TransportChannelProvider;
+import com.google.auth.Credentials;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -54,6 +56,8 @@ public final class SpannerCqlSessionBuilder
   private String databaseUri = null;
   private String host = null;
   private Optional<Duration> maxCommitDelay = Optional.empty();
+  private TransportChannelProvider channelProvider = null;
+  private Credentials credentials;
 
   /**
    * Wraps the default CQL session with a SpannerCqlSession instance.
@@ -101,6 +105,18 @@ public final class SpannerCqlSessionBuilder
    */
   public SpannerCqlSessionBuilder setMaxCommitDelay(Duration maxCommitDelay) {
     this.maxCommitDelay = Optional.of(maxCommitDelay);
+    return this;
+  }
+
+  /** Sets the gRPC transport channel provider. */
+  public SpannerCqlSessionBuilder setChannelProvider(TransportChannelProvider channelProvider) {
+    this.channelProvider = channelProvider;
+    return this;
+  }
+
+  /** Sets the GCP credentials for accessing Cloud Spanner. */
+  public SpannerCqlSessionBuilder setGoogleCloudCredentials(Credentials credentials) {
+    this.credentials = credentials;
     return this;
   }
 
@@ -213,6 +229,8 @@ public final class SpannerCqlSessionBuilder
             .inetAddress(iNetAddress)
             .databaseUri(databaseUri)
             .numGrpcChannels(numGrpcChannels)
+            .channelProvider(channelProvider)
+            .credentials(credentials)
             .build();
 
     adapter = new Adapter(adapterOptions);

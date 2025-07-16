@@ -15,12 +15,19 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
+import com.google.api.gax.core.CredentialsProvider;
+import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.core.GaxProperties;
+import com.google.api.gax.core.NoCredentialsProvider;
 import com.google.api.gax.grpc.ChannelPoolSettings;
 import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
 import com.google.api.gax.rpc.FixedHeaderProvider;
 import com.google.api.gax.rpc.HeaderProvider;
+import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.NoCredentials;
+import com.google.common.base.MoreObjects;
+import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
 import java.io.IOException;
@@ -43,7 +50,6 @@ final class Adapter {
   private static final int DEFAULT_CONNECTION_BACKLOG = 50;
   private static final String ENV_VAR_GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS =
       "GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS";
-
   private static final String USER_AGENT_KEY = "user-agent";
   private static final String CLIENT_LIBRARY_LANGUAGE = "java-spanner-cassandra";
   private static final String CLIENT_VERSION = "0.3.0"; // {x-release-please-version}
@@ -52,6 +58,10 @@ final class Adapter {
           + "/v"
           + CLIENT_VERSION
           + GaxProperties.getLibraryVersion(Adapter.class);
+  private static final ImmutableSet<String> SCOPES =
+      ImmutableSet.of(
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/spanner.data");
 
   private AdapterClientWrapper adapterClientWrapper;
   private ServerSocket serverSocket;
@@ -75,13 +85,16 @@ final class Adapter {
     }
 
     try {
-      GoogleCredentials credentials = GoogleCredentials.getApplicationDefault();
+      Credentials credentials = options.getCredentials();
+      if (credentials == null) {
+        credentials = GoogleCredentials.getApplicationDefault();
+      }
+      final CredentialsProvider credentialsProvider = setUpCredentialsProvider(credentials);
 
       InstantiatingGrpcChannelProvider.Builder channelProviderBuilder =
           AdapterSettings.defaultGrpcTransportProviderBuilder();
 
       channelProviderBuilder
-          .setCredentials(credentials)
           .setAllowNonDefaultServiceAccount(true)
           .setChannelPoolSettings(
               ChannelPoolSettings.staticallySized(options.getNumGrpcChannels()));
@@ -94,7 +107,7 @@ final class Adapter {
             Collections.singletonList(InstantiatingGrpcChannelProvider.HardBoundTokenTypes.ALTS));
         channelProviderBuilder.setAttemptDirectPathXds();
       }
-      HeaderProvider headerProvider =
+      final HeaderProvider headerProvider =
           FixedHeaderProvider.create(
               RESOURCE_PREFIX_HEADER_KEY,
               options.getDatabaseUri(),
@@ -103,7 +116,10 @@ final class Adapter {
       AdapterSettings settings =
           AdapterSettings.newBuilder()
               .setEndpoint(options.getSpannerEndpoint())
-              .setTransportChannelProvider(channelProviderBuilder.build())
+              .setTransportChannelProvider(
+                  MoreObjects.firstNonNull(
+                      options.getChannelProvider(), channelProviderBuilder.build()))
+              .setCredentialsProvider(credentialsProvider)
               .setHeaderProvider(headerProvider)
               .build();
 
@@ -171,6 +187,23 @@ final class Adapter {
     } catch (IOException e) {
       LOG.error("Error accepting client connection", e);
     }
+  }
+
+  private static CredentialsProvider setUpCredentialsProvider(final Credentials credentials) {
+    Credentials scopedCredentials = getScopedCredentials(credentials);
+    if (scopedCredentials != null && scopedCredentials != NoCredentials.getInstance()) {
+      return FixedCredentialsProvider.create(scopedCredentials);
+    }
+    return NoCredentialsProvider.create();
+  }
+
+  private static Credentials getScopedCredentials(final Credentials credentials) {
+    Credentials credentialsToReturn = credentials;
+    if (credentials instanceof GoogleCredentials
+        && ((GoogleCredentials) credentials).createScopedRequired()) {
+      credentialsToReturn = ((GoogleCredentials) credentials).createScoped(SCOPES);
+    }
+    return credentialsToReturn;
   }
 
   private static boolean isEnableDirectPathXdsEnv() {
