@@ -63,7 +63,9 @@ final class Adapter {
           "https://www.googleapis.com/auth/cloud-platform",
           "https://www.googleapis.com/auth/spanner.data");
 
-  private AdapterClientWrapper adapterClientWrapper;
+  private AttachmentsCache attachmentsCache;
+  private AdapterClient adapterClient;
+  private SessionManager sessionManager;
   private ServerSocket serverSocket;
   private ExecutorService executor;
   private boolean started = false;
@@ -123,16 +125,13 @@ final class Adapter {
               .setHeaderProvider(headerProvider)
               .build();
 
-      AdapterClient adapterClient = AdapterClient.create(settings);
+      adapterClient = AdapterClient.create(settings);
 
-      AttachmentsCache attachmentsCache = new AttachmentsCache(MAX_GLOBAL_STATE_SIZE);
-      SessionManager sessionManager = new SessionManager(adapterClient, options.getDatabaseUri());
+      attachmentsCache = new AttachmentsCache(MAX_GLOBAL_STATE_SIZE);
+      sessionManager = new SessionManager(adapterClient, options.getDatabaseUri());
 
       // Create initial session to verify database existence
       sessionManager.getSession();
-
-      adapterClientWrapper =
-          new AdapterClientWrapper(adapterClient, attachmentsCache, sessionManager);
 
       // Start listening on the specified host and port.
       serverSocket =
@@ -177,7 +176,12 @@ final class Adapter {
         // Turn on TCP_NODELAY to optimize for chatty protocol that prefers low latency.
         socket.setTcpNoDelay(true);
         executor.execute(
-            new DriverConnectionHandler(socket, adapterClientWrapper, options.getMaxCommitDelay()));
+            new DriverConnectionHandler(
+                socket,
+                adapterClient,
+                sessionManager,
+                attachmentsCache,
+                options.getMaxCommitDelay()));
         LOG.debug("Accepted client connection from: {}", socket.getRemoteSocketAddress());
       }
     } catch (SocketException e) {
