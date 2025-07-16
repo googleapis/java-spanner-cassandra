@@ -19,13 +19,15 @@ package com.google.cloud.spanner.adapter;
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
 
 import com.google.api.gax.rpc.ApiCallContext;
-import com.google.api.gax.rpc.ServerStream;
+import com.google.api.gax.rpc.ResponseObserver;
+import com.google.api.gax.rpc.StreamController;
 import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageRequest;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
 import com.google.spanner.adapter.v1.AdapterClient;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -64,8 +66,12 @@ final class AdapterClientWrapper {
    * @param streamId The stream id of the message to send.
    * @return A byte array payload of the adapter's response.
    */
-  byte[] sendGrpcRequest(
-      byte[] payload, Map<String, String> attachments, ApiCallContext context, int streamId) {
+  void sendGrpcRequest(
+      ByteBuffer payload,
+      Map<String, String> attachments,
+      ApiCallContext context,
+      int streamId,
+      DriverConnectionHandler driverConnectionHandler) {
 
     AdaptMessageRequest request =
         AdaptMessageRequest.newBuilder()
@@ -75,40 +81,62 @@ final class AdapterClientWrapper {
             .setPayload(ByteString.copyFrom(payload))
             .build();
 
-    List<ByteString> collectedPayloads = new ArrayList<>();
+    ResponseObserver<AdaptMessageResponse> responseObserver =
+        new ResponseObserver<AdaptMessageResponse>() {
+          List<ByteString> collectedPayloads = new ArrayList<>();
 
-    try {
-      ServerStream<AdaptMessageResponse> serverStream =
-          adapterClient.adaptMessageCallable().call(request, context);
-      for (AdaptMessageResponse adaptMessageResponse : serverStream) {
-        adaptMessageResponse.getStateUpdatesMap().forEach(attachmentsCache::put);
-        collectedPayloads.add(adaptMessageResponse.getPayload());
-      }
-    } catch (RuntimeException e) {
-      LOG.error("Error executing AdaptMessage request: ", e);
-      // Any error in getting the AdaptMessageResponse should be reported back to the client.
-      return serverErrorResponse(streamId, e.getMessage());
-    }
+          @Override
+          public void onResponse(AdaptMessageResponse response) {
+            // Process each response message as it arrives from the stream.
+            response.getStateUpdatesMap().forEach(attachmentsCache::put);
+            collectedPayloads.add(response.getPayload());
+          }
 
-    if (collectedPayloads.isEmpty()) {
-      return serverErrorResponse(
-          streamId, "No response received from the server."); // No response payloads at all.
-    }
+          @Override
+          public void onError(Throwable t) {
+            // If the gRPC call fails, complete the future with an error response.
+            LOG.error("Error executing AdaptMessage request: ", t);
+            driverConnectionHandler.queueResponseAndTryToWrite(
+                serverErrorResponse(streamId, t.getMessage()));
+          }
 
-    try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-      final int numPayloads = collectedPayloads.size();
-      // In case of multiple responses, the last response contains the header. So write it first.
-      outputStream.write(collectedPayloads.get(numPayloads - 1).toByteArray());
+          @Override
+          public void onComplete() {
+            // When the stream is finished, process the collected payloads.
+            if (collectedPayloads.isEmpty()) {
+              driverConnectionHandler.queueResponseAndTryToWrite(
+                  serverErrorResponse(streamId, "No response received from the server."));
+              return;
+            }
 
-      // Then write the remaining responses.
-      for (int i = 0; i < numPayloads - 1; i++) {
-        outputStream.write(collectedPayloads.get(i).toByteArray());
-      }
-      return outputStream.toByteArray();
-    } catch (IOException e) {
-      LOG.error("Error stitching chunked payloads: ", e);
-      return serverErrorResponse(streamId, e.getMessage());
-    }
+            try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
+              final int numPayloads = collectedPayloads.size();
+              // In case of multiple responses, the last response contains the header.
+              // So write it first.
+              byteArrayOutputStream.write(collectedPayloads.get(numPayloads - 1).toByteArray());
+
+              // Then write the remaining responses.
+              for (int i = 0; i < numPayloads - 1; i++) {
+                byteArrayOutputStream.write(collectedPayloads.get(i).toByteArray());
+              }
+
+              driverConnectionHandler.queueResponseAndTryToWrite(
+                  ByteBuffer.wrap(byteArrayOutputStream.toByteArray()));
+
+            } catch (IOException e) {
+              LOG.error("Error stitching chunked payloads: ", e);
+              driverConnectionHandler.queueResponseAndTryToWrite(
+                  serverErrorResponse(streamId, e.getMessage()));
+            }
+          }
+
+          @Override
+          public void onStart(StreamController controller) {
+            // Do nothing.
+          }
+        };
+
+    adapterClient.adaptMessageCallable().call(request, responseObserver, context);
   }
 
   AttachmentsCache getAttachmentsCache() {

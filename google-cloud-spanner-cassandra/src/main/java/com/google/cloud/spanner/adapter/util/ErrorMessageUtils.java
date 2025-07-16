@@ -26,6 +26,7 @@ import com.datastax.oss.protocol.internal.response.error.Unprepared;
 import com.google.api.core.InternalApi;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import java.nio.ByteBuffer;
 import java.util.Collections;
 
 /**
@@ -57,7 +58,7 @@ public final class ErrorMessageUtils {
    * @param queryId The query ID associated with the error.
    * @return A byte array representing the unprepared error response.
    */
-  public static byte[] unpreparedResponse(int streamId, byte[] queryId) {
+  public static ByteBuffer unpreparedResponse(int streamId, byte[] queryId) {
     Unprepared errorMsg = new Unprepared("Unprepared", queryId);
     return errorResponse(streamId, errorMsg);
   }
@@ -69,7 +70,7 @@ public final class ErrorMessageUtils {
    * @param message The error message.
    * @return A byte array representing the server error response.
    */
-  public static byte[] serverErrorResponse(int streamId, String message) {
+  public static ByteBuffer serverErrorResponse(int streamId, String message) {
     Error errorMsg = new Error(ErrorCode.SERVER_ERROR, message);
     return errorResponse(streamId, errorMsg);
   }
@@ -81,18 +82,13 @@ public final class ErrorMessageUtils {
    * @param errorMsg The Error object containing the error details.
    * @return A byte array representing the error response.
    */
-  public static byte[] errorResponse(int streamId, Error errorMsg) {
+  public static ByteBuffer errorResponse(int streamId, Error errorMsg) {
     Frame responseFrame =
         Frame.forResponse(
             PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, Collections.emptyList(), errorMsg);
     ByteBuf responseBuf = serverFrameCodec.encode(responseFrame);
-    return convertByteBufToByteArray(responseBuf);
-  }
-
-  private static byte[] convertByteBufToByteArray(ByteBuf srcBuf) {
-    byte[] response = new byte[srcBuf.readableBytes()];
-    srcBuf.readBytes(response);
-    srcBuf.release();
-    return response;
+    ByteBuffer byteBuffer = ByteBuffer.allocate(responseBuf.readableBytes());
+    responseBuf.readBytes(byteBuffer);
+    return byteBuffer;
   }
 }

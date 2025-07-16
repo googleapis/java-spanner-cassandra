@@ -234,6 +234,6 @@ public final class SpannerCqlSessionBuilder
             .build();
 
     adapter = new Adapter(adapterOptions);
-    adapter.start();
+    adapter.doStart();
   }
 }

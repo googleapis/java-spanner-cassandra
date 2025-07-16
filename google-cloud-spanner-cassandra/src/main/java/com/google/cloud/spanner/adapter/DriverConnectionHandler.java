@@ -1,19 +1,3 @@
-/*
-Copyright 2025 Google LLC
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package com.google.cloud.spanner.adapter;
 
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
@@ -33,13 +17,10 @@ import com.google.common.collect.ImmutableMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -47,12 +28,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Handles the connection from a driver, translating TCP data to gRPC requests and vice versa. */
-final class DriverConnectionHandler implements Runnable {
-
+class DriverConnectionHandler {
+  private final AsynchronousSocketChannel channel;
+  private final AdapterClientWrapper adapterClientWrapper;
   private static final Logger LOG = LoggerFactory.getLogger(DriverConnectionHandler.class);
   private static final int HEADER_LENGTH = 9;
   private static final String PREPARED_QUERY_ID_ATTACHMENT_PREFIX = "pqid/";
@@ -62,25 +46,49 @@ final class DriverConnectionHandler implements Runnable {
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
-  private final Socket socket;
-  private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
   private final GrpcCallContext defaultContext;
   private final GrpcCallContext defaultContextWithLAR;
+  private final ByteBuffer headerBuffer = ByteBuffer.allocate(HEADER_LENGTH);
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
 
-  /**
-   * Constructor for DriverConnectionHandler.
-   *
-   * @param socket The client's socket.
-   * @param adapterClientWrapper The adapter client wrapper used for gRPC communication.
-   * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
-   */
+  // NEW: Queue and flag to serialize write operations and prevent WritePendingException.
+  private final Queue<ByteBuffer> writeQueue = new ConcurrentLinkedQueue<>();
+  private final AtomicBoolean isWriting = new AtomicBoolean(false);
+  private final WriteHandler writeHandler = new WriteHandler();
+
+  /** NEW: CompletionHandler for serializing writes to the channel. */
+  private class WriteHandler implements CompletionHandler<Integer, Void> {
+    @Override
+    public void completed(Integer bytesWritten, Void attachment) {
+      if (!writeQueue.isEmpty()) {
+        // There's more data in the queue, write the next message.
+        ByteBuffer nextResponse = writeQueue.poll();
+        channel.write(nextResponse, null, this);
+      } else {
+        // The queue is empty, release the write lock.
+        isWriting.set(false);
+        // Check again in case a response was added while we were releasing the lock.
+        if (!writeQueue.isEmpty()) {
+          tryProcessWriteQueue();
+        }
+      }
+    }
+
+    @Override
+    public void failed(Throwable t, Void attachment) {
+      isWriting.set(false); // Release the lock on failure.
+      LOG.error("Error writing to channel", t);
+    }
+  }
+
   public DriverConnectionHandler(
-      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
-    this.socket = socket;
+      AsynchronousSocketChannel channel,
+      AdapterClientWrapper adapterClientWrapper,
+      Optional<Duration> maxCommitDelay) {
+    this.channel = channel;
     this.adapterClientWrapper = adapterClientWrapper;
     this.defaultContext = GrpcCallContext.createDefault();
     this.defaultContextWithLAR =
@@ -92,160 +100,119 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
-  public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
-    this(socket, adapterClientWrapper, Optional.empty());
-  }
-
-  /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
-  @Override
-  public void run() {
-    LOG.debug("Handling connection from: {}", socket.getRemoteSocketAddress());
-
-    try (BufferedInputStream inputStream = new BufferedInputStream(socket.getInputStream());
-        BufferedOutputStream outputStream = new BufferedOutputStream(socket.getOutputStream())) {
-      processRequestsLoop(inputStream, outputStream);
-    } catch (IOException e) {
-      LOG.error(
-          "Exception handling connection from {}: {}",
-          socket.getRemoteSocketAddress(),
-          e.getMessage(),
-          e);
-    } finally {
-      try {
-        socket.close();
-      } catch (IOException e) {
-        LOG.warn("Error closing socket: {}", e.getMessage());
-      }
-    }
-  }
-
-  private void processRequestsLoop(InputStream inputStream, OutputStream outputStream)
-      throws IOException {
-    // Keep processing until End-Of-Stream is reached on the input
-    while (true) {
-      byte[] responseToWrite;
-      int streamId = defaultStreamId; // Initialize with a default value.
-      try {
-        // 1. Read and construct the payload from the input stream
-        byte[] payload = constructPayload(inputStream);
-
-        // 2. Check for EOF signaled by an empty payload
-        if (payload.length == 0) {
-          break; // Break out of the loop gracefully in case of EOF
-        }
-
-        // 3. Prepare the payload.
-        PreparePayloadResult prepareResult = preparePayload(payload);
-        streamId = prepareResult.getStreamId();
-        Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
-
-        // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-        if (!response.isPresent()) {
-          responseToWrite =
-              adapterClientWrapper.sendGrpcRequest(
-                  payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
-          // Now response holds the gRPC result, which might still be empty.
-        } else {
-          responseToWrite = response.get();
-        }
-      } catch (RuntimeException e) {
-        // 5. Handle any error during payload construction or attachment processing.
-        // Create a server error response to send back to the client.
-        LOG.error("Error processing request: ", e);
-        responseToWrite =
-            serverErrorResponse(
-                streamId, "Server error during request processing: " + e.getMessage());
-      }
-
-      outputStream.write(responseToWrite);
-      outputStream.flush();
-    }
-  }
-
-  private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)
-      throws IOException {
-    if (off < 0 || len < 0 || len > b.length - off) {
-      throw new IndexOutOfBoundsException(
-          String.format("offset %d, length %d, buffer length %d", off, len, b.length));
-    }
-
-    if (len == 0) {
-      return 0;
-    }
-
-    int totalBytesRead = 0;
-    int bytesReadInCurrentLoop;
-
-    // Loop until the desired number of bytes are read or EOF is reached
-    while (totalBytesRead < len) {
-      // Calculate how many bytes are still needed
-      int remaining = len - totalBytesRead;
-      // Calculate the current offset in the buffer
-      int currentOffset = off + totalBytesRead;
-
-      // Attempt to read the remaining bytes
-      bytesReadInCurrentLoop = in.read(b, currentOffset, remaining);
-
-      if (bytesReadInCurrentLoop == -1) {
-        // End Of Stream (EOF) reached before 'len' bytes were read.
-        break;
-      }
-
-      totalBytesRead += bytesReadInCurrentLoop;
-    }
-
-    return totalBytesRead;
-  }
-
-  private byte[] constructPayload(InputStream socketInputStream)
-      throws IOException, IllegalArgumentException {
-    byte[] header = new byte[HEADER_LENGTH];
-    int bytesRead = readNBytesJava8(socketInputStream, header, 0, HEADER_LENGTH);
-    if (bytesRead == 0) {
-      // EOF
-      return new byte[0];
-    } else if (bytesRead < HEADER_LENGTH) {
-      throw new IllegalArgumentException("Payload is not well formed.");
-    }
-
-    // Extract the body length from the header.
-    int bodyLength = load32BigEndian(header, 5);
-
-    if (bodyLength < 0) {
-      throw new IllegalArgumentException("Payload is not well formed.");
-    }
-
-    byte[] body = new byte[bodyLength];
-    if (readNBytesJava8(socketInputStream, body, 0, bodyLength) < bodyLength) {
-      throw new IllegalArgumentException("Payload is not well formed.");
-    }
-
-    // Combine the header and body into the payload.
-    byte[] payload = new byte[HEADER_LENGTH + bodyLength];
-    System.arraycopy(header, 0, payload, 0, HEADER_LENGTH);
-    System.arraycopy(body, 0, payload, HEADER_LENGTH, bodyLength);
-
-    return payload;
-  }
-
-  private int load32BigEndian(byte[] bytes, int offset) {
-    return ByteBuffer.wrap(bytes, offset, 4).getInt();
+  /**
+   * NEW: Safely queues a response to be written and starts the write process if it's not already
+   * running. This is the only method that should be used to write to the channel.
+   */
+  public void queueResponseAndTryToWrite(ByteBuffer response) {
+    writeQueue.offer(response);
+    tryProcessWriteQueue();
   }
 
   /**
-   * Attempts to prepare the given payload prior to sending the request.
-   *
-   * <p>This method checks the type of message encoded in the payload and sets the appropriate
-   * attachment response and context. For attachments, it checks if the payload is an Execute or
-   * Batch request and if it contains a queryId. If a queryId is found, it checks if a corresponding
-   * prepared query exists in the global state. If a prepared query is found, it adds the prepared
-   * query to the attachments map. If a prepared query is not found, it sets an error in the result
-   * object.
-   *
-   * @param payload The payload to process.
-   * @return A {@link PreparePayloadResult} containing the result of the operation.
+   * NEW: Checks if a write is in progress. If not, it starts writing the next message from the
+   * queue.
    */
-  private PreparePayloadResult preparePayload(byte[] payload) {
+  private void tryProcessWriteQueue() {
+    // Atomically check if a write is in progress and, if not, claim the "write lock".
+    if (isWriting.compareAndSet(false, true)) {
+      if (!writeQueue.isEmpty()) {
+        ByteBuffer response = writeQueue.poll();
+        channel.write(response, null, writeHandler);
+      } else {
+        // Nothing to write, release the lock immediately.
+        isWriting.set(false);
+      }
+    }
+  }
+
+  public void startReading() {
+    // Initiate an async read for the header. The CompletionHandler will be called when it's done.
+    channel.read(
+        headerBuffer,
+        null,
+        new CompletionHandler<Integer, Void>() {
+          @Override
+          public void completed(Integer bytesRead, Void attachment) {
+            if (bytesRead < 0) { // End of stream
+              closeChannel();
+              return;
+            }
+
+            // We have the header, now read the body
+            headerBuffer.flip();
+            int bodyLength = headerBuffer.getInt(5);
+            ByteBuffer bodyBuffer = ByteBuffer.allocate(bodyLength);
+
+            readBody(bodyBuffer);
+          }
+
+          @Override
+          public void failed(Throwable t, Void attachment) {
+            // MODIFIED: Use the write queue for all writes.
+            queueResponseAndTryToWrite(serverErrorResponse(defaultStreamId, t.getMessage()));
+            LOG.error("Error reading from channel", t);
+          }
+        });
+  }
+
+  private void readBody(ByteBuffer bodyBuffer) {
+    channel.read(
+        bodyBuffer,
+        null,
+        new CompletionHandler<Integer, Void>() {
+          @Override
+          public void completed(Integer bytesRead, Void attachment) {
+            if (bodyBuffer.hasRemaining()) {
+              // The body hasn't been fully read yet, issue another read
+              channel.read(bodyBuffer, null, this);
+              return;
+            }
+
+            // Body is fully read, process the complete message
+            bodyBuffer.flip();
+            processCompletePayload(
+                (ByteBuffer)
+                    ByteBuffer.allocate(headerBuffer.capacity() + bodyBuffer.capacity())
+                        .put(headerBuffer)
+                        .put(bodyBuffer)
+                        .flip());
+
+            // Reset and start reading the next message header
+            headerBuffer.clear();
+            startReading();
+          }
+
+          @Override
+          public void failed(Throwable t, Void attachment) {
+            LOG.error("Error reading message body", t);
+            // MODIFIED: Use the write queue for all writes.
+            queueResponseAndTryToWrite(serverErrorResponse(defaultStreamId, t.getMessage()));
+          }
+        });
+  }
+
+  private void processCompletePayload(ByteBuffer payload) {
+    PreparePayloadResult prepareResult = preparePayload(payload);
+    int streamId = prepareResult.getStreamId();
+    Optional<ByteBuffer> response = prepareResult.getAttachmentErrorResponse();
+
+    // If attachment preparation didn't yield an immediate response, send the gRPC request.
+    if (!response.isPresent()) {
+      // MODIFIED: Pass `this` handler instead of the raw channel so the wrapper can call back.
+      adapterClientWrapper.sendGrpcRequest(
+          payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId, this);
+    } else {
+      LOG.error("Attachment error");
+      // MODIFIED: Use the write queue for all writes.
+      queueResponseAndTryToWrite(response.get());
+    }
+  }
+
+  private PreparePayloadResult preparePayload(ByteBuffer payload) {
+    // This method can be optimized by using Unpooled.wrappedBuffer(header, body)
+    // instead of creating a new combined buffer, but that requires changing the
+    // call structure slightly. For now, we leave it as is to focus on the write fix.
     ByteBuf payloadBuf = Unpooled.wrappedBuffer(payload);
     Frame frame = serverFrameCodec.decode(payloadBuf);
     payloadBuf.release();
@@ -275,17 +242,17 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       context = defaultContext;
     }
-    Optional<byte[]> errorResponse =
+    Optional<ByteBuffer> errorResponse =
         prepareAttachmentForQueryId(streamId, attachments, message.queryId);
     return new PreparePayloadResult(context, streamId, attachments, errorResponse);
   }
 
   private PreparePayloadResult prepareBatchMessage(
       Batch message, int streamId, Map<String, String> attachments) {
-    Optional<byte[]> attachmentErrorResponse = Optional.empty();
+    Optional<ByteBuffer> attachmentErrorResponse = Optional.empty();
     for (Object obj : message.queriesOrIds) {
       if (obj instanceof byte[]) {
-        Optional<byte[]> errorResponse =
+        Optional<ByteBuffer> errorResponse =
             prepareAttachmentForQueryId(streamId, attachments, (byte[]) obj);
         if (errorResponse.isPresent()) {
           attachmentErrorResponse = errorResponse;
@@ -314,7 +281,7 @@ final class DriverConnectionHandler implements Runnable {
     return new PreparePayloadResult(context, streamId, attachments);
   }
 
-  private Optional<byte[]> prepareAttachmentForQueryId(
+  private Optional<ByteBuffer> prepareAttachmentForQueryId(
       int streamId, Map<String, String> attachments, byte[] queryId) {
     String key = constructKey(queryId);
     Optional<String> val = adapterClientWrapper.getAttachmentsCache().get(key);
@@ -327,5 +294,15 @@ final class DriverConnectionHandler implements Runnable {
 
   private static String constructKey(byte[] queryId) {
     return PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
+  }
+
+  private void closeChannel() {
+    try {
+      if (channel.isOpen()) {
+        channel.close();
+      }
+    } catch (IOException e) {
+      LOG.error("Error closing channel: ", e);
+    }
   }
 }

@@ -17,6 +17,7 @@ limitations under the License.
 package com.google.cloud.spanner.adapter;
 
 import com.google.api.gax.rpc.ApiCallContext;
+import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -29,14 +30,14 @@ public class PreparePayloadResult {
   private ApiCallContext context;
   private int streamId;
   private Map<String, String> attachments;
-  private Optional<byte[]> attachmentErrorResponse;
+  private Optional<ByteBuffer> attachmentErrorResponse;
   private static final Map<String, String> EMPTY_ATTACHMENTS = Collections.emptyMap();
 
   public PreparePayloadResult(
       ApiCallContext context,
       int streamId,
       Map<String, String> attachments,
-      Optional<byte[]> attachmentErrorResponse) {
+      Optional<ByteBuffer> attachmentErrorResponse) {
     this.context = context;
     this.streamId = streamId;
     this.attachments = attachments;
@@ -56,7 +57,7 @@ public class PreparePayloadResult {
     return attachments;
   }
 
-  public Optional<byte[]> getAttachmentErrorResponse() {
+  public Optional<ByteBuffer> getAttachmentErrorResponse() {
     return attachmentErrorResponse;
   }
 

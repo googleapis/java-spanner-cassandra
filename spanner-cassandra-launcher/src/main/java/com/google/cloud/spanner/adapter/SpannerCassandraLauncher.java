@@ -93,16 +93,7 @@ public class SpannerCassandraLauncher {
 
     Adapter adapter = new Adapter(opBuilder.build());
 
-    Runtime.getRuntime()
-        .addShutdownHook(
-            new Thread(
-                () -> {
-                  try {
-                    adapter.stop();
-                  } catch (Exception e) {
-                    LOG.error("Error stopping adapter during shutdown: " + e.getMessage(), e);
-                  }
-                }));
+    Runtime.getRuntime().addShutdownHook(new Thread(adapter::doStop));
 
     LOG.info(
         "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels and max commit"
@@ -113,7 +104,7 @@ public class SpannerCassandraLauncher {
         numGrpcChannels,
         maxCommitDelayProperty);
 
-    adapter.start();
+    adapter.doStart();
 
     try {
       // Wait until interrupted or terminated.

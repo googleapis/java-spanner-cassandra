@@ -112,6 +112,7 @@ final class SessionManager {
         LOG.info("Refreshing Spanner session for " + databaseUri);
         try {
           Session newSession = createNewSession(); // Perform gRPC call
+          LOG.info("Session created.");
           // Update the volatile holder reference atomically
           this.currentSessionHolder = new SessionHolder(newSession, now);
           return newSession;
@@ -132,6 +133,7 @@ final class SessionManager {
             .setParent(this.databaseUri)
             .setSession(Session.newBuilder().build())
             .build();
+    LOG.info("CreateSessionRequest: " + request);
     return adapterClient.createSession(request);
   }
 
