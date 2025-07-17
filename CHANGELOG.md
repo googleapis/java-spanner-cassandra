@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/googleapis/java-spanner-cassandra/compare/v0.4.0...v0.4.1) (2025-07-17)
+
+
+### Bug Fixes
+
+* Add missing setting for direct path enablement ([#145](https://github.com/googleapis/java-spanner-cassandra/issues/145)) ([5099d98](https://github.com/googleapis/java-spanner-cassandra/commit/5099d9893dbe160de15e09d35cc95be2839ecc71))
+* Attach appropriate stream_id for error response ([#149](https://github.com/googleapis/java-spanner-cassandra/issues/149)) ([54ba573](https://github.com/googleapis/java-spanner-cassandra/commit/54ba57305d659d52f007e0ce602ca9a5a3031ebc))
+* Correct method name ([#127](https://github.com/googleapis/java-spanner-cassandra/issues/127)) ([0a5fa64](https://github.com/googleapis/java-spanner-cassandra/commit/0a5fa64f9b172db49c126bce33246dee38df848c))
+
 ## [0.4.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.3.0...v0.4.0) (2025-06-29)
 
 
