@@ -73,6 +73,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
+  private static final byte[] EMPTY_BYTES = new byte[0];
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -204,18 +205,18 @@ final class DriverConnectionHandler implements Runnable {
   }
 
   class MessageContext {
-    public final byte[] payload;
     public final int opCode;
     public final short streamId;
+    public final byte[] payload;
 
     public MessageContext(int opCode, short streamId, byte[] payload) {
       this.opCode = opCode;
-      this.payload = payload;
       this.streamId = streamId;
+      this.payload = payload;
     }
 
     public MessageContext() {
-      payload = new byte[0];
+      payload = EMPTY_BYTES;
       opCode = -1;
       streamId = -1;
     }
@@ -232,13 +233,17 @@ final class DriverConnectionHandler implements Runnable {
       throw new IllegalArgumentException("Payload is not well formed.");
     }
 
-    // Extract the body length, op code and stream id from the header.
-    int bodyLength = load32BigEndian(header, 5);
-    int opCode = load8Unsigned(header, 4);
+    // Extract the stream id, op code and body length from the header.
     short streamId = load16BigEndian(header, 2);
+    int opCode = load8Unsigned(header, 4);
+    int bodyLength = load32BigEndian(header, 5);
 
     if (bodyLength < 0) {
       throw new IllegalArgumentException("Payload is not well formed.");
+    }
+
+    if (opCode == ProtocolConstants.Opcode.OPTIONS && bodyLength == 0) {
+      return new MessageContext(opCode, streamId, EMPTY_BYTES);
     }
 
     byte[] body = new byte[bodyLength];
