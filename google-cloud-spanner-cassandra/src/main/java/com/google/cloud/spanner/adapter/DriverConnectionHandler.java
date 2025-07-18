@@ -41,7 +41,6 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -51,6 +50,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +64,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
+  private static final String PROTOCOL_CASSANDRA = "cassandra";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
@@ -76,6 +78,8 @@ final class DriverConnectionHandler implements Runnable {
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
+  private final BlockingQueue<ByteString> writeQueue = new LinkedBlockingQueue<>();
+  private static final ByteString DONE = ByteString.EMPTY;
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -119,16 +123,51 @@ final class DriverConnectionHandler implements Runnable {
   @Override
   public void run() {
     LOG.debug("Handling connection from: {}", socket.getRemoteSocketAddress());
-
     try (BufferedInputStream inputStream = new BufferedInputStream(socket.getInputStream());
         BufferedOutputStream outputStream = new BufferedOutputStream(socket.getOutputStream())) {
-      processRequestsLoop(inputStream, outputStream);
+      // Create one writer thread per connection to synchronize writes.
+      Thread writerThread =
+          new Thread(
+              () -> {
+                try {
+                  while (!Thread.currentThread().isInterrupted()) {
+                    ByteString response = writeQueue.take();
+                    if (response == DONE) {
+                      break;
+                    }
+                    response.writeTo(outputStream);
+                    outputStream.flush();
+                  }
+                } catch (IOException e) {
+                  if (!socket.isClosed()) {
+                    LOG.error("Writer error: " + e);
+                  }
+                } catch (InterruptedException e) {
+                  LOG.debug("Writer thread interrupted.");
+                  // Preserve interrupt status
+                  Thread.currentThread().interrupt();
+                }
+              });
+      writerThread.start();
+
+      // Start accepting requests on the socket.
+      processRequests(inputStream);
+
+      // Signal the writer thread to stop.
+      writeQueue.offer(DONE);
+
+      try {
+        // Wait for the writer thread to complete before closing the socket.
+        writerThread.join();
+      } catch (InterruptedException e) {
+        LOG.warn("Wait for writer thread to complete interrupted: {}", e.getMessage());
+        // Preserve interrupt status
+        Thread.currentThread().interrupt();
+      }
+
     } catch (IOException e) {
       LOG.error(
-          "Exception handling connection from {}: {}",
-          socket.getRemoteSocketAddress(),
-          e.getMessage(),
-          e);
+          "Error handling connection from {}: {}", socket.getRemoteSocketAddress(), e.getMessage());
     } finally {
       try {
         socket.close();
@@ -138,8 +177,7 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
-  private void processRequestsLoop(InputStream inputStream, OutputStream outputStream)
-      throws IOException {
+  private void processRequests(InputStream inputStream) throws IOException {
     // Keep processing until End-Of-Stream is reached on the input
     while (true) {
       byte[] responseToWrite;
@@ -160,12 +198,12 @@ final class DriverConnectionHandler implements Runnable {
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
         if (!response.isPresent()) {
-          // Make async AdaptMessage gRPC request and move on to next one.
-          adaptMessageAsync(streamId, payload, prepareResult, outputStream);
+          // Make async AdaptMessage gRPC call and move on to reading next request.
+          adaptMessageAsync(streamId, payload, prepareResult);
           continue;
-        } else {
-          responseToWrite = response.get();
         }
+        responseToWrite = response.get();
+
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
@@ -175,8 +213,7 @@ final class DriverConnectionHandler implements Runnable {
                 streamId, "Server error during request processing: " + e.getMessage());
       }
 
-      outputStream.write(responseToWrite);
-      outputStream.flush();
+      writeQueue.offer(ByteString.copyFrom(responseToWrite));
     }
   }
 
@@ -280,17 +317,16 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
-  private void adaptMessageAsync(
-      int streamId, byte[] payload, PreparePayloadResult prepareResult, OutputStream outputStream) {
+  private void adaptMessageAsync(int streamId, byte[] payload, PreparePayloadResult prepareResult) {
     AdaptMessageRequest request =
         AdaptMessageRequest.newBuilder()
             .setName(sessionManager.getSession().getName())
-            .setProtocol("cassandra")
+            .setProtocol(PROTOCOL_CASSANDRA)
             .putAllAttachments(prepareResult.getAttachments())
             .setPayload(ByteString.copyFrom(payload))
             .build();
     AdaptMessageResponseObserver responseObserver =
-        new AdaptMessageResponseObserver(streamId, outputStream, attachmentsCache);
+        new AdaptMessageResponseObserver(streamId, writeQueue, attachmentsCache);
     adapterClient
         .adaptMessageCallable()
         .call(request, responseObserver, prepareResult.getContext());

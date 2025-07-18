@@ -22,29 +22,33 @@ import com.google.api.gax.rpc.ResponseObserver;
 import com.google.api.gax.rpc.StreamController;
 import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
-import java.io.IOException;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * A {@link ResponseObserver} that handles streaming responses from the {@code AdaptMessage} gRPC
- * call.
+ * call, updates the states and offers the payloads to the write queue.
+ *
+ * <p>It is stateful for the duration of one gRPC call, buffering all incoming {@link
+ * AdaptMessageResponse} payloads in memory. During the response assembly, the <strong>last</strong>
+ * payload received from the stream contains the message header and must be written first.
  */
 class AdaptMessageResponseObserver implements ResponseObserver<AdaptMessageResponse> {
   private static final Logger LOG = LoggerFactory.getLogger(AdaptMessageResponseObserver.class);
   private final int streamId;
-  private final OutputStream outputStream;
   private final AttachmentsCache attachmentsCache;
+  private final BlockingQueue<ByteString> writeQueue;
+
   private List<ByteString> collectedPayloads = new ArrayList<>();
 
   AdaptMessageResponseObserver(
-      int streamId, OutputStream outputStream, AttachmentsCache attachmentsCache) {
+      int streamId, BlockingQueue<ByteString> writeQueue, AttachmentsCache attachmentsCache) {
     this.streamId = streamId;
-    this.outputStream = outputStream;
     this.attachmentsCache = attachmentsCache;
+    this.writeQueue = writeQueue;
   }
 
   @Override
@@ -56,42 +60,27 @@ class AdaptMessageResponseObserver implements ResponseObserver<AdaptMessageRespo
 
   @Override
   public void onError(Throwable t) {
-    // If the gRPC call fails, write
+    // If the gRPC call fails, write failure to the socket.
     LOG.error("Error executing AdaptMessage request: ", t);
-    try {
-      outputStream.write(serverErrorResponse(streamId, t.getMessage()));
-      outputStream.flush();
-    } catch (IOException e) {
-      LOG.error("Error writing to socket: ", e);
-    }
+    writeQueue.offer(ByteString.copyFrom(serverErrorResponse(streamId, t.getMessage())));
   }
 
   @Override
   public void onComplete() {
     // When the stream is finished, process the collected payloads.
     if (collectedPayloads.isEmpty()) {
-      try {
-        outputStream.write(serverErrorResponse(streamId, "No response received from the server."));
-        outputStream.flush();
-      } catch (IOException e) {
-        LOG.error("Error writing to socket: ", e);
-      }
+      writeQueue.offer(
+          ByteString.copyFrom(
+              serverErrorResponse(streamId, "No response received from the server.")));
       return;
     }
 
     final int numPayloads = collectedPayloads.size();
-    // In case of multiple responses, the last response contains the header.
-    // So write it first.
-    try {
-      outputStream.write(collectedPayloads.get(numPayloads - 1).toByteArray());
-      // Then write the remaining responses.
-      for (int i = 0; i < numPayloads - 1; i++) {
-        outputStream.write(collectedPayloads.get(i).toByteArray());
-      }
-      outputStream.flush();
-    } catch (IOException e) {
-      LOG.error("Error writing to socket: ", e);
+    writeQueue.offer(collectedPayloads.get(numPayloads - 1));
+    for (int i = 0; i < numPayloads - 1; i++) {
+      writeQueue.offer(collectedPayloads.get(i));
     }
+    collectedPayloads.clear();
   }
 
   @Override
