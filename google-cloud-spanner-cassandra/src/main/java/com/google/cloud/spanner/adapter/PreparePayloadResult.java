@@ -27,29 +27,25 @@ import java.util.Optional;
  */
 public class PreparePayloadResult {
   private ApiCallContext context;
-  private int streamId;
   private Map<String, String> attachments;
   private Optional<byte[]> attachmentErrorResponse;
   private static final Map<String, String> EMPTY_ATTACHMENTS = Collections.emptyMap();
 
   public PreparePayloadResult(
       ApiCallContext context,
-      int streamId,
       Map<String, String> attachments,
       Optional<byte[]> attachmentErrorResponse) {
     this.context = context;
-    this.streamId = streamId;
     this.attachments = attachments;
     this.attachmentErrorResponse = attachmentErrorResponse;
   }
 
-  public PreparePayloadResult(
-      ApiCallContext context, int streamId, Map<String, String> attachments) {
-    this(context, streamId, attachments, Optional.empty());
+  public PreparePayloadResult(ApiCallContext context, Map<String, String> attachments) {
+    this(context, attachments, Optional.empty());
   }
 
-  public PreparePayloadResult(ApiCallContext context, int streamId) {
-    this(context, streamId, EMPTY_ATTACHMENTS, Optional.empty());
+  public PreparePayloadResult(ApiCallContext context) {
+    this(context, EMPTY_ATTACHMENTS, Optional.empty());
   }
 
   public Map<String, String> getAttachments() {
@@ -62,9 +58,5 @@ public class PreparePayloadResult {
 
   public ApiCallContext getContext() {
     return context;
-  }
-
-  int getStreamId() {
-    return streamId;
   }
 }
