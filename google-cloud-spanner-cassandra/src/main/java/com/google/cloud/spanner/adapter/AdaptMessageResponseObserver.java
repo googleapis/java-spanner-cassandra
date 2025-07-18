@@ -31,20 +31,34 @@ import org.slf4j.LoggerFactory;
 
 /**
  * A {@link ResponseObserver} that handles streaming responses from the {@code AdaptMessage} gRPC
- * call.
+ * call and writes them back to the socket.
+ *
+ * <p>It is stateful for the duration of one gRPC call, buffering all incoming {@link
+ * AdaptMessageResponse} payloads in memory. During the response assembly, the <strong>last</strong>
+ * payload received from the stream contains the message header and must be written first.
+ *
+ * <p>This class is not responsible for resource management. The lifecycle of the {@link
+ * OutputStream} and the {@link AttachmentsCache} must be managed outside. This class will NOT close
+ * the output stream upon successful completion or error.
  */
 class AdaptMessageResponseObserver implements ResponseObserver<AdaptMessageResponse> {
   private static final Logger LOG = LoggerFactory.getLogger(AdaptMessageResponseObserver.class);
   private final int streamId;
   private final OutputStream outputStream;
   private final AttachmentsCache attachmentsCache;
+  private final DriverConnectionHandler driverConnectionHandler;
+
   private List<ByteString> collectedPayloads = new ArrayList<>();
 
   AdaptMessageResponseObserver(
-      int streamId, OutputStream outputStream, AttachmentsCache attachmentsCache) {
+      int streamId,
+      OutputStream outputStream,
+      AttachmentsCache attachmentsCache,
+      DriverConnectionHandler driverConnectionHandler) {
     this.streamId = streamId;
     this.outputStream = outputStream;
     this.attachmentsCache = attachmentsCache;
+    this.driverConnectionHandler = driverConnectionHandler;
   }
 
   @Override
@@ -59,38 +73,45 @@ class AdaptMessageResponseObserver implements ResponseObserver<AdaptMessageRespo
     // If the gRPC call fails, write
     LOG.error("Error executing AdaptMessage request: ", t);
     try {
-      outputStream.write(serverErrorResponse(streamId, t.getMessage()));
-      outputStream.flush();
+      synchronized (outputStream) {
+        outputStream.write(serverErrorResponse(streamId, t.getMessage()));
+        outputStream.flush();
+      }
     } catch (IOException e) {
-      LOG.error("Error writing to socket: ", e);
+      LOG.warn("Error writing to socket for streamId {}: {}", streamId, e.getMessage());
+    } finally {
+      driverConnectionHandler.requestComplete();
     }
   }
 
   @Override
   public void onComplete() {
     // When the stream is finished, process the collected payloads.
-    if (collectedPayloads.isEmpty()) {
-      try {
-        outputStream.write(serverErrorResponse(streamId, "No response received from the server."));
-        outputStream.flush();
-      } catch (IOException e) {
-        LOG.error("Error writing to socket: ", e);
-      }
-      return;
-    }
-
-    final int numPayloads = collectedPayloads.size();
-    // In case of multiple responses, the last response contains the header.
-    // So write it first.
     try {
-      outputStream.write(collectedPayloads.get(numPayloads - 1).toByteArray());
-      // Then write the remaining responses.
-      for (int i = 0; i < numPayloads - 1; i++) {
-        outputStream.write(collectedPayloads.get(i).toByteArray());
+      if (collectedPayloads.isEmpty()) {
+        synchronized (outputStream) {
+          outputStream.write(
+              serverErrorResponse(streamId, "No response received from the server."));
+          outputStream.flush();
+        }
+        return;
       }
-      outputStream.flush();
+
+      final int numPayloads = collectedPayloads.size();
+      synchronized (outputStream) {
+        // In case of multiple responses, the last response contains the header.
+        // So write it first.
+        outputStream.write(collectedPayloads.get(numPayloads - 1).toByteArray());
+        // Then write the remaining responses.
+        for (int i = 0; i < numPayloads - 1; i++) {
+          outputStream.write(collectedPayloads.get(i).toByteArray());
+        }
+        outputStream.flush();
+      }
     } catch (IOException e) {
-      LOG.error("Error writing to socket: ", e);
+      LOG.warn("Error writing to socket for streamId {}: {}", streamId, e.getMessage());
+    } finally {
+      driverConnectionHandler.requestComplete();
     }
   }
 

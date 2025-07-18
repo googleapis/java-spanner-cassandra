@@ -207,6 +207,39 @@ public final class DriverConnectionHandlerTest {
   }
 
   @Test
+  public void errorInGrpcResponseStream_OnlyErrorMessageIsSentBackToSocket() throws IOException {
+    byte[] payload = createQueryMessage();
+    when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(payload));
+    Map<String, String> stateUpdates = new HashMap<>();
+    stateUpdates.put("k1", "v1");
+    AdaptMessageResponse mockResponse =
+        AdaptMessageResponse.newBuilder()
+            .setPayload(ByteString.copyFromUtf8(" test response 1"))
+            .putAllStateUpdates(stateUpdates)
+            .build();
+    doAnswer(
+            invocation -> {
+              ResponseObserver<AdaptMessageResponse> observer = invocation.getArgument(1);
+              observer.onResponse(mockResponse);
+              observer.onError(new Throwable("Error!"));
+              return null;
+            })
+        .when(mockCallable)
+        .call(
+            any(AdaptMessageRequest.class),
+            any(AdaptMessageResponseObserver.class),
+            any(ApiCallContext.class));
+
+    DriverConnectionHandler handler =
+        new DriverConnectionHandler(
+            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+    handler.run();
+
+    assertThat(outputStream.toByteArray()).isEqualTo(serverErrorResponse(STREAM_ID, "Error!"));
+    assertThat(attachmentsCache.get("k1")).hasValue("v1");
+  }
+
+  @Test
   public void successfulDmlQueryMessage() throws IOException {
     byte[] validPayload = createDmlQueryMessage();
     byte[] grpcResponse = "gRPC response".getBytes(StandardCharsets.UTF_8.name());

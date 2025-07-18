@@ -51,6 +51,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +64,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
+  private static final String PROTOCOL_CASSANDRA = "cassandra";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
@@ -73,6 +75,8 @@ final class DriverConnectionHandler implements Runnable {
   private final Optional<String> maxCommitDelayMillis;
   private final GrpcCallContext defaultContext;
   private final GrpcCallContext defaultContextWithLAR;
+  private final AtomicInteger inflightGrpcRequests = new AtomicInteger(0);
+  private final Object shutdownLock = new Object();
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
@@ -115,6 +119,14 @@ final class DriverConnectionHandler implements Runnable {
     this(socket, adapterClient, sessionManager, attachmentsCache, Optional.empty());
   }
 
+  void requestComplete() {
+    if (inflightGrpcRequests.decrementAndGet() == 0) {
+      synchronized (shutdownLock) {
+        shutdownLock.notifyAll();
+      }
+    }
+  }
+
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
   @Override
   public void run() {
@@ -123,6 +135,20 @@ final class DriverConnectionHandler implements Runnable {
     try (BufferedInputStream inputStream = new BufferedInputStream(socket.getInputStream());
         BufferedOutputStream outputStream = new BufferedOutputStream(socket.getOutputStream())) {
       processRequestsLoop(inputStream, outputStream);
+
+      // Graceful shutdown. Wait for all inflight gRPC requests to complete.
+      synchronized (shutdownLock) {
+        while (inflightGrpcRequests.get() > 0) {
+          try {
+            // Wait until an observer notifies us that the count might be zero.
+            shutdownLock.wait();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.warn("Shutdown wait interrupted.");
+            break;
+          }
+        }
+      }
     } catch (IOException e) {
       LOG.error(
           "Exception handling connection from {}: {}",
@@ -160,12 +186,12 @@ final class DriverConnectionHandler implements Runnable {
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
         if (!response.isPresent()) {
-          // Make async AdaptMessage gRPC request and move on to next one.
+          // Make async AdaptMessage gRPC call and move on to reading next request.
           adaptMessageAsync(streamId, payload, prepareResult, outputStream);
           continue;
-        } else {
-          responseToWrite = response.get();
         }
+        responseToWrite = response.get();
+
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
@@ -175,8 +201,10 @@ final class DriverConnectionHandler implements Runnable {
                 streamId, "Server error during request processing: " + e.getMessage());
       }
 
-      outputStream.write(responseToWrite);
-      outputStream.flush();
+      synchronized (outputStream) {
+        outputStream.write(responseToWrite);
+        outputStream.flush();
+      }
     }
   }
 
@@ -282,15 +310,16 @@ final class DriverConnectionHandler implements Runnable {
 
   private void adaptMessageAsync(
       int streamId, byte[] payload, PreparePayloadResult prepareResult, OutputStream outputStream) {
+    inflightGrpcRequests.incrementAndGet();
     AdaptMessageRequest request =
         AdaptMessageRequest.newBuilder()
             .setName(sessionManager.getSession().getName())
-            .setProtocol("cassandra")
+            .setProtocol(PROTOCOL_CASSANDRA)
             .putAllAttachments(prepareResult.getAttachments())
             .setPayload(ByteString.copyFrom(payload))
             .build();
     AdaptMessageResponseObserver responseObserver =
-        new AdaptMessageResponseObserver(streamId, outputStream, attachmentsCache);
+        new AdaptMessageResponseObserver(streamId, outputStream, attachmentsCache, this);
     adapterClient
         .adaptMessageCallable()
         .call(request, responseObserver, prepareResult.getContext());

@@ -83,6 +83,40 @@
                 <excludes>com/google/cloud/spanner/adapter/util/**</excludes>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                        <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                        <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                        <overWriteReleases>false</overWriteReleases>
+                        <overWriteSnapshots>false</overWriteSnapshots>
+                        <overWriteIfNewer>true</overWriteIfNewer>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                <finalName>spanner-cassandra-launcher</finalName>
+                <archive>
+                    <index>false</index>
+                    <manifest>
+                    <mainClass>com.google.cloud.spanner.adapter.Launcher</mainClass>
+                    <addClasspath>true</addClasspath>
+                    <classpathPrefix>lib/</classpathPrefix>
+                    </manifest>
+                </archive>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>

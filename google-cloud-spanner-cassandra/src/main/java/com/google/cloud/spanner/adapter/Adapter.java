@@ -40,6 +40,7 @@ import java.util.concurrent.Executors;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.threeten.bp.Duration;
 
 /** Manages client connections, acting as an intermediary for communication with Spanner. */
 @NotThreadSafe
@@ -98,6 +99,8 @@ final class Adapter {
 
       channelProviderBuilder
           .setAllowNonDefaultServiceAccount(true)
+          .setKeepAliveTime(Duration.ofMinutes(2))
+          .setKeepAliveWithoutCalls(true)
           .setChannelPoolSettings(
               ChannelPoolSettings.staticallySized(options.getNumGrpcChannels()));
 

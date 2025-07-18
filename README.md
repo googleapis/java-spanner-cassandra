@@ -20,7 +20,7 @@ This client acts as a local tcp proxy, intercepting the raw Cassandra protocol b
 - [Spanner Instructions](#spanner-instructions)
 - [Getting started](#getting-started)
   - [In-Process Dependency](#in-process-dependency-recommended)
-  - [Sidecar Proxy](#sidecar-proxy)
+  - [Sidecar Proxy (or Standalone Process)](#sidecar-proxy)
 - [Supported Cassandra Versions](#supported-cassandra-versions)
 - [Unsupported Features](#unsupported-features)
 - [License](#license)
@@ -64,7 +64,7 @@ gcloud config set project [MY_PROJECT_NAME]
 You can use `spanner-cassandra` in two main ways: as an **in-process dependency** within your Java application, or as a standalone **sidecar proxy** for other applications and tools.
 
 * **In-Process Dependency:** Choose this method if you have a Java application already using `cassandra-java-driver` and want the adapter to run within the same process, providing a seamless switch to Spanner with minimal code modifications.
-* **Sidecar Proxy:** Choose this method if your application is not written in Java, or if you want to use external Cassandra tools (like `cqlsh`) without modifying the application's code. The adapter runs as a separate process, intercepting network traffic.
+* **Sidecar Proxy (or standalone process):** Choose this method if your application is not written in Java, or if you want to use external Cassandra tools (like `cqlsh`) without modifying the application's code. The adapter runs as a separate process, intercepting network traffic.
 
 ### In-Process Dependency (Recommended)
 
@@ -106,13 +106,12 @@ For Java applications already using the `cassandra-java-driver` library, integra
     CqlSession session =
         SpannerCqlSession.builder() // `SpannerCqlSession` instead of `CqlSession`
             .setDatabaseUri("projects/your_gcp_project/instances/your_spanner_instance/databases/your_spanner_database") // Required: Specify the Spanner database URI
-            .withKeyspace("your_spanner_database") // Your Spanner database ID is mapped to a keyspace
             .withConfigLoader(
                 DriverConfigLoader.programmaticBuilder()
-                    .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4") // Set protocol version.
+                    .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
                     .withDuration(
                         DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT,
-                        Duration.ofSeconds(5)) // Set connection initialization timeout.
+                        Duration.ofSeconds(5))
                     .build())
             .build();
 
@@ -124,11 +123,11 @@ For Java applications already using the `cassandra-java-driver` library, integra
 
 *  Run your Java application as usual. The adapter will now route traffic to your Spanner database.
 
-### Sidecar Proxy
+### Sidecar Proxy (or Standalone Process)
 
 ![sidecar](sidecar.png)
 
-For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassandra Java Client as a standalone proxy.
+For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassandra Java Client as a standalone proxy or process (with locally built jar file).
 
 **Steps:**
 
@@ -145,7 +144,7 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
     mvn clean install
     ```
 
-    This will create an executable jar file `spanner-cassandra-launcher.jar` inside the folder `spanner-cassandra-launcher/target`.
+    This will create an executable jar file `spanner-cassandra-launcher.jar` inside the folder `google-cloud-spanner-cassandra/target`.
 
 * Run the jar using the command:
 
@@ -167,7 +166,6 @@ By default, Spanner Cassandra client communicates using the [Cassandra 4.0 proto
 ## Unsupported Features
 
 * named parameters
-* pagination
 * unset parameter value
 
 ## License
