@@ -60,6 +60,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -75,6 +78,7 @@ public final class DriverConnectionHandlerTest {
       ArgumentCaptor.forClass(ApiCallContext.class);
   private static final ArgumentCaptor<AdaptMessageRequest> adaptMessageRequestCaptor =
       ArgumentCaptor.forClass(AdaptMessageRequest.class);
+  private static final ExecutorService executor = Executors.newCachedThreadPool();
   private AdapterClient mockAdapterClient = mock(AdapterClient.class);
 
   @SuppressWarnings("unchecked")
@@ -97,6 +101,11 @@ public final class DriverConnectionHandlerTest {
     mockSocket = mock(Socket.class);
     outputStream = new ByteArrayOutputStream();
     when(mockSocket.getOutputStream()).thenReturn(outputStream);
+  }
+
+  @AfterClass
+  public static void tearDown() {
+    executor.shutdownNow();
   }
 
   @Test
@@ -123,7 +132,12 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor,
+            mockSocket,
+            mockAdapterClient,
+            mockSessionManager,
+            attachmentsCache,
+            Optional.empty());
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
@@ -171,7 +185,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name()))
@@ -199,11 +213,44 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toByteArray())
         .isEqualTo(serverErrorResponse(STREAM_ID, "No response received from the server."));
+  }
+
+  @Test
+  public void errorInGrpcResponseStream_OnlyErrorMessageIsSentBackToSocket() throws IOException {
+    byte[] payload = createQueryMessage();
+    when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(payload));
+    Map<String, String> stateUpdates = new HashMap<>();
+    stateUpdates.put("k1", "v1");
+    AdaptMessageResponse mockResponse =
+        AdaptMessageResponse.newBuilder()
+            .setPayload(ByteString.copyFromUtf8(" test response 1"))
+            .putAllStateUpdates(stateUpdates)
+            .build();
+    doAnswer(
+            invocation -> {
+              ResponseObserver<AdaptMessageResponse> observer = invocation.getArgument(1);
+              observer.onResponse(mockResponse);
+              observer.onError(new Throwable("Error!"));
+              return null;
+            })
+        .when(mockCallable)
+        .call(
+            any(AdaptMessageRequest.class),
+            any(AdaptMessageResponseObserver.class),
+            any(ApiCallContext.class));
+
+    DriverConnectionHandler handler =
+        new DriverConnectionHandler(
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+    handler.run();
+
+    assertThat(outputStream.toByteArray()).isEqualTo(serverErrorResponse(STREAM_ID, "Error!"));
+    assertThat(attachmentsCache.get("k1")).hasValue("v1");
   }
 
   @Test
@@ -231,6 +278,7 @@ public final class DriverConnectionHandlerTest {
     // Use a max commit delay of 100 ms.
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
+            executor,
             mockSocket,
             mockAdapterClient,
             mockSessionManager,
@@ -270,7 +318,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
@@ -304,7 +352,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
@@ -341,6 +389,7 @@ public final class DriverConnectionHandlerTest {
     // Use a max commit delay of 100 ms.
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
+            executor,
             mockSocket,
             mockAdapterClient,
             mockSessionManager,
@@ -365,7 +414,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toByteArray()).isEqualTo(response);
@@ -399,7 +448,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
@@ -417,7 +466,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toByteArray()).isEqualTo(response);
@@ -435,7 +484,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toByteArray()).isEqualTo(expectedResponse);
@@ -452,7 +501,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
     handler.run();
 
     assertThat(outputStream.toByteArray()).isEqualTo(expectedResponse);
@@ -471,7 +520,7 @@ public final class DriverConnectionHandlerTest {
 
     DriverConnectionHandler handler =
         new DriverConnectionHandler(
-            mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
+            executor, mockSocket, mockAdapterClient, mockSessionManager, attachmentsCache);
 
     handler.run();
 

@@ -40,6 +40,7 @@ import java.util.concurrent.Executors;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.threeten.bp.Duration;
 
 /** Manages client connections, acting as an intermediary for communication with Spanner. */
 @NotThreadSafe
@@ -87,6 +88,7 @@ final class Adapter {
     }
 
     try {
+
       Credentials credentials = options.getCredentials();
       if (credentials == null) {
         credentials = GoogleCredentials.getApplicationDefault();
@@ -98,6 +100,8 @@ final class Adapter {
 
       channelProviderBuilder
           .setAllowNonDefaultServiceAccount(true)
+          .setKeepAliveTime(Duration.ofMinutes(2))
+          .setKeepAliveWithoutCalls(true)
           .setChannelPoolSettings(
               ChannelPoolSettings.staticallySized(options.getNumGrpcChannels()));
 
@@ -140,7 +144,6 @@ final class Adapter {
       LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
 
       executor = Executors.newCachedThreadPool();
-
       // Start accepting client connections.
       executor.execute(this::acceptClientConnections);
 
@@ -177,6 +180,7 @@ final class Adapter {
         socket.setTcpNoDelay(true);
         executor.execute(
             new DriverConnectionHandler(
+                executor,
                 socket,
                 adapterClient,
                 sessionManager,
