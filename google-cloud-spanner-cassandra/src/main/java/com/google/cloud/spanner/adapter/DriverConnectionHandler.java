@@ -16,6 +16,25 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
+
+import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
+import com.datastax.oss.driver.shaded.guava.common.annotations.VisibleForTesting;
+import com.datastax.oss.protocol.internal.Compressor;
+import com.datastax.oss.protocol.internal.Frame;
+import com.datastax.oss.protocol.internal.FrameCodec;
+import com.datastax.oss.protocol.internal.ProtocolConstants;
+import com.datastax.oss.protocol.internal.request.Batch;
+import com.datastax.oss.protocol.internal.request.Execute;
+import com.datastax.oss.protocol.internal.request.Query;
+import com.google.api.gax.grpc.GrpcCallContext;
+import com.google.api.gax.rpc.ApiCallContext;
+import com.google.common.collect.ImmutableMap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -30,29 +49,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
-import com.datastax.oss.driver.shaded.guava.common.annotations.VisibleForTesting;
-import com.datastax.oss.protocol.internal.Compressor;
-import com.datastax.oss.protocol.internal.Frame;
-import com.datastax.oss.protocol.internal.FrameCodec;
-import com.datastax.oss.protocol.internal.ProtocolConstants;
-import com.datastax.oss.protocol.internal.request.Batch;
-import com.datastax.oss.protocol.internal.request.Execute;
-import com.datastax.oss.protocol.internal.request.Query;
-import com.google.api.gax.grpc.GrpcCallContext;
-import com.google.api.gax.rpc.ApiCallContext;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
-import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
-import com.google.common.collect.ImmutableMap;
-
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.Unpooled;
 
 /** Handles the connection from a driver, translating TCP data to gRPC requests and vice versa. */
 final class DriverConnectionHandler implements Runnable {
@@ -77,6 +75,7 @@ final class DriverConnectionHandler implements Runnable {
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
       GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
+  private static final byte[] EMPTY_BYTES = new byte[0];
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -188,19 +187,19 @@ final class DriverConnectionHandler implements Runnable {
     return totalBytesRead;
   }
 
-  class MessageContext {
-    public final byte[] payload;
-    public final int opCode;
-    public final short streamId;
+  private static class MessageContext {
+    final int opCode;
+    final short streamId;
+    final byte[] payload;
 
-    public MessageContext(int opCode, short streamId, byte[] payload) {
+    MessageContext(int opCode, short streamId, byte[] payload) {
       this.opCode = opCode;
-      this.payload = payload;
       this.streamId = streamId;
+      this.payload = payload;
     }
 
-    public MessageContext() {
-      payload = new byte[0];
+    MessageContext() {
+      payload = EMPTY_BYTES;
       opCode = -1;
       streamId = -1;
     }
@@ -216,10 +215,10 @@ final class DriverConnectionHandler implements Runnable {
       throw new IllegalArgumentException("Payload is not well formed.");
     }
 
-    // Extract the body length, op code and stream id from the header.
-    int bodyLength = load32BigEndian(header, 5);
-    int opCode = load8Unsigned(header, 4);
+    // Extract the stream id, op code and body length from the header.
     short streamId = load16BigEndian(header, 2);
+    int opCode = load8Unsigned(header, 4);
+    int bodyLength = load32BigEndian(header, 5);
 
     if (bodyLength < 0) {
       throw new IllegalArgumentException("Payload is not well formed.");
