@@ -16,23 +16,6 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
-import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
-
-import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
-import com.datastax.oss.protocol.internal.Compressor;
-import com.datastax.oss.protocol.internal.Frame;
-import com.datastax.oss.protocol.internal.FrameCodec;
-import com.datastax.oss.protocol.internal.request.Batch;
-import com.datastax.oss.protocol.internal.request.Execute;
-import com.datastax.oss.protocol.internal.request.Query;
-import com.google.api.gax.grpc.GrpcCallContext;
-import com.google.api.gax.rpc.ApiCallContext;
-import com.google.common.collect.ImmutableMap;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.Unpooled;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -47,8 +30,28 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
+import com.datastax.oss.protocol.internal.Compressor;
+import com.datastax.oss.protocol.internal.Frame;
+import com.datastax.oss.protocol.internal.FrameCodec;
+import com.datastax.oss.protocol.internal.ProtocolConstants;
+import com.datastax.oss.protocol.internal.request.Batch;
+import com.datastax.oss.protocol.internal.request.Execute;
+import com.datastax.oss.protocol.internal.request.Query;
+import com.google.api.gax.grpc.GrpcCallContext;
+import com.google.api.gax.rpc.ApiCallContext;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
+import com.google.common.collect.ImmutableMap;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 
 /** Handles the connection from a driver, translating TCP data to gRPC requests and vice versa. */
 final class DriverConnectionHandler implements Runnable {
@@ -70,6 +73,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
+  private static final byte[] EMPTY_BYTES = new byte[0];
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -126,24 +130,27 @@ final class DriverConnectionHandler implements Runnable {
       byte[] responseToWrite;
       int streamId = defaultStreamId; // Initialize with a default value.
       try {
-        // 1. Read and construct the payload from the input stream
-        byte[] payload = constructPayload(inputStream);
+        // 1. Read and construct the message context from the input stream
+        MessageContext ctx = constructMessageContext(inputStream);
 
         // 2. Check for EOF signaled by an empty payload
-        if (payload.length == 0) {
+        if (ctx.payload.length == 0) {
           break; // Break out of the loop gracefully in case of EOF
         }
 
         // 3. Prepare the payload.
-        PreparePayloadResult prepareResult = preparePayload(payload);
-        streamId = prepareResult.getStreamId();
+        PreparePayloadResult prepareResult = preparePayload(ctx);
+        streamId = ctx.streamId;
         Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
         if (!response.isPresent()) {
           responseToWrite =
               adapterClientWrapper.sendGrpcRequest(
-                  payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
+                  ctx.payload,
+                  prepareResult.getAttachments(),
+                  prepareResult.getContext(),
+                  streamId);
           // Now response holds the gRPC result, which might still be empty.
         } else {
           responseToWrite = response.get();
@@ -197,22 +204,46 @@ final class DriverConnectionHandler implements Runnable {
     return totalBytesRead;
   }
 
-  private byte[] constructPayload(InputStream socketInputStream)
+  class MessageContext {
+    public final int opCode;
+    public final short streamId;
+    public final byte[] payload;
+
+    public MessageContext(int opCode, short streamId, byte[] payload) {
+      this.opCode = opCode;
+      this.streamId = streamId;
+      this.payload = payload;
+    }
+
+    public MessageContext() {
+      payload = EMPTY_BYTES;
+      opCode = -1;
+      streamId = -1;
+    }
+  }
+
+  private MessageContext constructMessageContext(InputStream socketInputStream)
       throws IOException, IllegalArgumentException {
     byte[] header = new byte[HEADER_LENGTH];
     int bytesRead = readNBytesJava8(socketInputStream, header, 0, HEADER_LENGTH);
     if (bytesRead == 0) {
       // EOF
-      return new byte[0];
+      return new MessageContext();
     } else if (bytesRead < HEADER_LENGTH) {
       throw new IllegalArgumentException("Payload is not well formed.");
     }
 
-    // Extract the body length from the header.
+    // Extract the stream id, op code and body length from the header.
+    short streamId = load16BigEndian(header, 2);
+    int opCode = load8Unsigned(header, 4);
     int bodyLength = load32BigEndian(header, 5);
 
     if (bodyLength < 0) {
       throw new IllegalArgumentException("Payload is not well formed.");
+    }
+
+    if (opCode == ProtocolConstants.Opcode.OPTIONS && bodyLength == 0) {
+      return new MessageContext(opCode, streamId, EMPTY_BYTES);
     }
 
     byte[] body = new byte[bodyLength];
@@ -225,11 +256,28 @@ final class DriverConnectionHandler implements Runnable {
     System.arraycopy(header, 0, payload, 0, HEADER_LENGTH);
     System.arraycopy(body, 0, payload, HEADER_LENGTH, bodyLength);
 
-    return payload;
+    return new MessageContext(opCode, streamId, payload);
   }
 
   private int load32BigEndian(byte[] bytes, int offset) {
     return ByteBuffer.wrap(bytes, offset, 4).getInt();
+  }
+
+  private short load16BigEndian(byte[] bytes, int offset) {
+    return ByteBuffer.wrap(bytes, offset, 2).getShort();
+  }
+
+  private int load8Unsigned(byte[] bytes, int offset) {
+    // Directly access the byte and apply the 0xFF mask.
+    // This promotes the byte to an int and ensures the value is treated as unsigned.
+    return bytes[offset] & 0xFF;
+  }
+
+  private Frame decodeFrame(byte[] payload) {
+    ByteBuf payloadBuf = Unpooled.wrappedBuffer(payload);
+    Frame frame = serverFrameCodec.decode(payloadBuf);
+    payloadBuf.release();
+    return frame;
   }
 
   /**
@@ -242,23 +290,23 @@ final class DriverConnectionHandler implements Runnable {
    * query to the attachments map. If a prepared query is not found, it sets an error in the result
    * object.
    *
-   * @param payload The payload to process.
+   * @param MessageContext The context contains the stream id, op code and payload to process.
    * @return A {@link PreparePayloadResult} containing the result of the operation.
    */
-  private PreparePayloadResult preparePayload(byte[] payload) {
-    ByteBuf payloadBuf = Unpooled.wrappedBuffer(payload);
-    Frame frame = serverFrameCodec.decode(payloadBuf);
-    payloadBuf.release();
-
+  private PreparePayloadResult preparePayload(MessageContext ctx) {
     Map<String, String> attachments = new HashMap<>();
-    if (frame.message instanceof Execute) {
-      return prepareExecuteMessage((Execute) frame.message, frame.streamId, attachments);
-    } else if (frame.message instanceof Batch) {
-      return prepareBatchMessage((Batch) frame.message, frame.streamId, attachments);
-    } else if (frame.message instanceof Query) {
-      return prepareQueryMessage((Query) frame.message, frame.streamId, attachments);
-    } else {
-      return new PreparePayloadResult(defaultContext, frame.streamId);
+    switch (ctx.opCode) {
+      case ProtocolConstants.Opcode.EXECUTE:
+        return prepareExecuteMessage(
+            (Execute) decodeFrame(ctx.payload).message, ctx.streamId, attachments);
+      case ProtocolConstants.Opcode.BATCH:
+        return prepareBatchMessage(
+            (Batch) decodeFrame(ctx.payload).message, ctx.streamId, attachments);
+      case ProtocolConstants.Opcode.QUERY:
+        return prepareQueryMessage(
+            (Query) decodeFrame(ctx.payload).message, ctx.streamId, attachments);
+      default:
+        return new PreparePayloadResult(defaultContext);
     }
   }
 
@@ -277,7 +325,7 @@ final class DriverConnectionHandler implements Runnable {
     }
     Optional<byte[]> errorResponse =
         prepareAttachmentForQueryId(streamId, attachments, message.queryId);
-    return new PreparePayloadResult(context, streamId, attachments, errorResponse);
+    return new PreparePayloadResult(context, attachments, errorResponse);
   }
 
   private PreparePayloadResult prepareBatchMessage(
@@ -297,7 +345,7 @@ final class DriverConnectionHandler implements Runnable {
       attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
     }
     return new PreparePayloadResult(
-        defaultContextWithLAR, streamId, attachments, attachmentErrorResponse);
+        defaultContextWithLAR, attachments, attachmentErrorResponse);
   }
 
   private PreparePayloadResult prepareQueryMessage(
@@ -311,7 +359,7 @@ final class DriverConnectionHandler implements Runnable {
         attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
       }
     }
-    return new PreparePayloadResult(context, streamId, attachments);
+    return new PreparePayloadResult(context, attachments);
   }
 
   private Optional<byte[]> prepareAttachmentForQueryId(
