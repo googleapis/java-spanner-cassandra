@@ -52,6 +52,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,8 +79,10 @@ final class DriverConnectionHandler implements Runnable {
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
+  private static final AtomicInteger numConnections = new AtomicInteger(0);
   private final BlockingQueue<ByteString> writeQueue = new LinkedBlockingQueue<>();
   private static final ByteString DONE = ByteString.EMPTY;
+  private final int connectionId;
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -108,6 +111,7 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       this.maxCommitDelayMillis = Optional.empty();
     }
+    this.connectionId = numConnections.incrementAndGet();
   }
 
   @VisibleForTesting
@@ -148,6 +152,7 @@ final class DriverConnectionHandler implements Runnable {
                   Thread.currentThread().interrupt();
                 }
               });
+      writerThread.setName("Writer thread " + connectionId);
       writerThread.start();
 
       // Start accepting requests on the socket.
