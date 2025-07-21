@@ -114,4 +114,8 @@ final class AdapterClientWrapper {
   AttachmentsCache getAttachmentsCache() {
     return attachmentsCache;
   }
+
+  AdapterClient getAdapterClient() {
+    return adapterClient;
+  }
 }
