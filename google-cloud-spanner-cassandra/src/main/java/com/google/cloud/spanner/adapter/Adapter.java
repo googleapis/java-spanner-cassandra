@@ -35,6 +35,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.Collections;
+import java.net.InetSocketAddress;
+import java.net.StandardSocketOptions;
+import java.nio.channels.AsynchronousServerSocketChannel;
+import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.CompletionHandler;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -64,7 +69,7 @@ final class Adapter {
           "https://www.googleapis.com/auth/spanner.data");
 
   private AdapterClientWrapper adapterClientWrapper;
-  private ServerSocket serverSocket;
+  private AsynchronousServerSocketChannel serverSocket;
   private ExecutorService executor;
   private boolean started = false;
   private AdapterOptions options;
@@ -135,15 +140,37 @@ final class Adapter {
           new AdapterClientWrapper(adapterClient, attachmentsCache, sessionManager);
 
       // Start listening on the specified host and port.
-      serverSocket =
-          new ServerSocket(
-              options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
-      LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
+      serverSocket = AsynchronousServerSocketChannel.open();
+      serverSocket.bind(
+          new InetSocketAddress(options.getInetAddress(), options.getTcpPort()),
+          DEFAULT_CONNECTION_BACKLOG);
+      LOG.info(
+          "Asynchronous TCP server started on {}:{}",
+          options.getInetAddress(),
+          options.getTcpPort());
 
       executor = Executors.newCachedThreadPool();
 
-      // Start accepting client connections.
-      executor.execute(this::acceptClientConnections);
+      serverSocket.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
+            @Override
+            public void completed(AsynchronousSocketChannel clientChannel, Void attachment) {
+              // IMPORTANT: Re-issue the accept call to listen for the next connection.
+              if (serverSocket.isOpen()) {
+                serverSocket.accept(null, this);
+              }
+
+              // Handle the new connection in a separate method.
+              handleNewConnection(clientChannel);
+            }
+
+            @Override
+            public void failed(Throwable exc, Void attachment) {
+              // Log error only if the server hasn't been deliberately closed.
+              if (serverSocket.isOpen()) {
+                LOG.error("Error accepting client connection", exc);
+              }
+            }
+          });
 
       started = true;
       LOG.info("Adapter started for database '{}'.", options.getDatabaseUri());
@@ -163,29 +190,35 @@ final class Adapter {
     if (!started) {
       throw new IllegalStateException("Adapter was never started!");
     }
-    executor.shutdownNow();
-    serverSocket.close();
+    // The shutdown order is important.
+    // 1. Close the server socket to stop accepting new connections.
+    if (serverSocket != null) {
+      serverSocket.close();
+    }
+    // 2. Shut down the executor to interrupt active handlers.
+    if (executor != null) {
+      executor.shutdownNow();
+    }
     LOG.info("Adapter stopped.");
   }
 
-  private void acceptClientConnections() {
+  private void handleNewConnection(AsynchronousSocketChannel clientChannel) {
     try {
-      while (!Thread.currentThread().isInterrupted()) {
-        final Socket socket = serverSocket.accept();
-        // Optimize for latency (2), then bandwidth (1) and then connection time (0).
-        socket.setPerformancePreferences(0, 2, 1);
-        // Turn on TCP_NODELAY to optimize for chatty protocol that prefers low latency.
-        socket.setTcpNoDelay(true);
-        executor.execute(
-            new DriverConnectionHandler(socket, adapterClientWrapper, options.getMaxCommitDelay()));
-        LOG.debug("Accepted client connection from: {}", socket.getRemoteSocketAddress());
-      }
-    } catch (SocketException e) {
-      if (!serverSocket.isClosed()) {
-        LOG.error("Error accepting client connection", e);
-      }
+      LOG.debug(
+          "Accepted client connection from: {}", clientChannel.getRemoteAddress());
+      // Optimize for chatty protocol that prefers low latency.
+      clientChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+ 
+      executor.execute(
+          new DriverConnectionHandler(clientChannel, adapterClientWrapper, options.getMaxCommitDelay()));
+
     } catch (IOException e) {
-      LOG.error("Error accepting client connection", e);
+      LOG.error("Failed to configure client connection. Closing channel.", e);
+      try {
+        clientChannel.close();
+      } catch (IOException closeException) {
+        // Suppress exception on close
+      }
     }
   }
 

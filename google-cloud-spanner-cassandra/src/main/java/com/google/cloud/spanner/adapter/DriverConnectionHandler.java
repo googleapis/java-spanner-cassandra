@@ -40,6 +40,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -62,7 +64,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
-  private final Socket socket;
+   private final AsynchronousSocketChannel channel;
   private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
   private final GrpcCallContext defaultContext;
@@ -70,6 +72,9 @@ final class DriverConnectionHandler implements Runnable {
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
+
+  private final ByteBuffer headerBuffer = ByteBuffer.allocate(HEADER_LENGTH);
+  private ByteBuffer bodyBuffer; // Will be allocated dynamically
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -79,45 +84,190 @@ final class DriverConnectionHandler implements Runnable {
    * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
    */
   public DriverConnectionHandler(
-      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
-    this.socket = socket;
+      AsynchronousSocketChannel channel,
+      AdapterClientWrapper adapterClientWrapper,
+      Optional<Duration> maxCommitDelay) {
+    this.channel = channel;
     this.adapterClientWrapper = adapterClientWrapper;
     this.defaultContext = GrpcCallContext.createDefault();
     this.defaultContextWithLAR =
         GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
-    if (maxCommitDelay.isPresent()) {
-      this.maxCommitDelayMillis = Optional.of(String.valueOf(maxCommitDelay.get().toMillis()));
-    } else {
-      this.maxCommitDelayMillis = Optional.empty();
-    }
+    this.maxCommitDelayMillis =
+        maxCommitDelay.map(duration -> String.valueOf(duration.toMillis()));
   }
 
-  public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
-    this(socket, adapterClientWrapper, Optional.empty());
-  }
-
-  /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
+  /** Kicks off the asynchronous request processing chain. */
   @Override
   public void run() {
-    LOG.debug("Handling connection from: {}", socket.getRemoteSocketAddress());
+    // Start the first read operation for the header. The rest of the process
+    // will be handled by a chain of completion handlers.
+    readRequestHeader();
+  }
 
-    try (BufferedInputStream inputStream = new BufferedInputStream(socket.getInputStream());
-        BufferedOutputStream outputStream = new BufferedOutputStream(socket.getOutputStream())) {
-      processRequestsLoop(inputStream, outputStream);
-    } catch (IOException e) {
-      LOG.error(
-          "Exception handling connection from {}: {}",
-          socket.getRemoteSocketAddress(),
-          e.getMessage(),
-          e);
-    } finally {
-      try {
-        socket.close();
-      } catch (IOException e) {
-        LOG.warn("Error closing socket: {}", e.getMessage());
+  /** Asynchronously reads the 9-byte request header. */
+  private void readRequestHeader() {
+    headerBuffer.clear();
+    readFully(headerBuffer, new CompletionHandler<Integer, Void>() {
+      @Override
+      public void completed(Integer bytesRead, Void attachment) {
+        // A successful read of the header triggers the body read.
+        readRequestBody();
       }
+
+      @Override
+      public void failed(Throwable exc, Void attachment) {
+        handleFailure("reading request header", exc);
+      }
+    });
+  }
+
+  /** Asynchronously reads the request body based on length from the header. */
+  private void readRequestBody() {
+    headerBuffer.flip();
+    // In Cassandra protocol, body length is at offset 5.
+    int bodyLength = ByteBuffer.wrap(headerBuffer.array(), 5, 4).getInt();
+    if (bodyLength < 0) {
+        handleFailure("processing request", new IOException("Invalid body length: " + bodyLength));
+        return;
+    }
+
+    bodyBuffer = ByteBuffer.allocate(bodyLength);
+    readFully(bodyBuffer, new CompletionHandler<Integer, Void>() {
+          @Override
+          public void completed(Integer result, Void attachment) {
+            // A successful read of the body triggers request processing.
+            processRequest();
+          }
+
+          @Override
+          public void failed(Throwable exc, Void attachment) {
+            handleFailure("reading request body", exc);
+          }
+        });
+  }
+
+  /** Processes the complete request and triggers the response write. */
+  private void processRequest() {
+    byte[] responseToWrite;
+    int streamId = defaultStreamId;
+
+    try {
+      // 1. Combine header and body into a single payload array.
+      byte[] payload = new byte[headerBuffer.remaining() + bodyBuffer.remaining()];
+      headerBuffer.get(payload, 0, headerBuffer.remaining());
+      bodyBuffer.get(payload, headerBuffer.remaining(), bodyBuffer.remaining());
+
+      // 2. Prepare the payload (same logic as before).
+      PreparePayloadResult prepareResult = preparePayload(payload);
+      streamId = prepareResult.getStreamId();
+      Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
+
+      // 3. If needed, send the gRPC request (same logic as before).
+      if (!response.isPresent()) {
+        responseToWrite =
+            adapterClientWrapper.sendGrpcRequest(
+                payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
+      } else {
+        responseToWrite = response.get();
+      }
+    } catch (RuntimeException e) {
+      LOG.error("Error processing request: ", e);
+      responseToWrite =
+          serverErrorResponse(streamId, "Server error during request processing: " + e.getMessage());
+    }
+
+    // 4. Asynchronously write the response back to the client.
+    writeResponse(ByteBuffer.wrap(responseToWrite));
+  }
+
+  /** Asynchronously writes the response back to the client. */
+  private void writeResponse(ByteBuffer responseBuffer) {
+    this.channel.write(responseBuffer, null, new CompletionHandler<Integer, Void>() {
+          @Override
+          public void completed(Integer result, Void attachment) {
+            // After a successful write, we immediately start listening
+            // for the next request header. This creates the "loop".
+            if (responseBuffer.hasRemaining()) {
+              // If the write was partial, continue writing the rest.
+              channel.write(responseBuffer, null, this);
+            } else {
+              // Write is complete, start reading the next request.
+              readRequestHeader();
+            }
+          }
+
+          @Override
+          public void failed(Throwable exc, Void attachment) {
+            handleFailure("writing response", exc);
+          }
+        });
+  }
+
+  /**
+   * Helper to ensure a ByteBuffer is completely filled from the channel.
+   * `AsynchronousSocketChannel.read` does not guarantee a full read.
+   */
+  private void readFully(ByteBuffer buffer, CompletionHandler<Integer, Void> handler) {
+    channel.read(buffer, null, new CompletionHandler<Integer, Void>() {
+          @Override
+          public void completed(Integer bytesRead, Void attachment) {
+            if (bytesRead < 0) {
+              // EOF: Client closed the connection cleanly.
+              handleClosure();
+              return;
+            }
+            if (buffer.hasRemaining()) {
+              // If the read was partial, issue another read for the rest.
+              channel.read(buffer, null, this);
+            } else {
+              // Buffer is full, the read is successful.
+              handler.completed(buffer.position(), null);
+            }
+          }
+
+          @Override
+          public void failed(Throwable exc, Void attachment) {
+            handler.failed(exc, null);
+          }
+        });
+  }
+
+  /** Centralized failure handling to log errors and close the channel. */
+  private void handleFailure(String action, Throwable exc) {
+    LOG.error(
+        "Exception while {} for client {}: {}",
+        action,
+        getRemoteAddressSafe(),
+        exc.getMessage(),
+        exc);
+    closeChannel();
+  }
+
+  /** Handles clean client disconnection (EOF). */
+  private void handleClosure() {
+    LOG.debug("Client {} closed the connection.", getRemoteAddressSafe());
+    closeChannel();
+  }
+
+  /** Closes the channel safely. */
+  private void closeChannel() {
+    try {
+      if (channel.isOpen()) {
+        channel.close();
+      }
+    } catch (IOException e) {
+      LOG.warn("Error closing channel: {}", e.getMessage());
     }
   }
+
+  private String getRemoteAddressSafe() {
+    try {
+      return channel.getRemoteAddress().toString();
+    } catch (IOException e) {
+      return "[unknown]";
+    }
+  }
+
 
   private void processRequestsLoop(InputStream inputStream, OutputStream outputStream)
       throws IOException {
