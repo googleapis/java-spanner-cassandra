@@ -22,11 +22,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Main entry point for launching the Spanner Cassandra Adapter as a sidecar service.
+ * Main entry point for running a Spanner Cassandra Adapter as a stand-alone application.
  *
  * <p>This class reads configuration parameters from system properties, initializes the underlying
  * {@link Adapter}, registers a shutdown hook for graceful termination, and starts the adapter
- * service. The main thread then blocks indefinitely until the application is terminated.
+ * service.
  *
  * <p>Configuration is provided via the following system properties:
  *
@@ -54,8 +54,8 @@ import org.slf4j.LoggerFactory;
  *
  * @see Adapter
  */
-public class SpannerCassandraLauncher {
-  private static final Logger LOG = LoggerFactory.getLogger(SpannerCassandraLauncher.class);
+public class Launcher {
+  private static final Logger LOG = LoggerFactory.getLogger(Launcher.class);
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
   private static final String DATABASE_URI_PROP_KEY = "databaseUri";
   private static final String HOST_PROP_KEY = "host";
