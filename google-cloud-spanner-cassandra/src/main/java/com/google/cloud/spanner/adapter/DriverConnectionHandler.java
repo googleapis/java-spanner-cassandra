@@ -40,6 +40,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -62,7 +63,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
-  private final Socket socket;
+  private final SocketChannel channel;
   private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
   private final GrpcCallContext defaultContext;
@@ -70,6 +71,9 @@ final class DriverConnectionHandler implements Runnable {
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
+
+  private final ByteBuffer headerBuffer = ByteBuffer.allocate(HEADER_LENGTH);
+  private ByteBuffer bodyBuffer; // Will be allocated dynamically
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -79,8 +83,8 @@ final class DriverConnectionHandler implements Runnable {
    * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
    */
   public DriverConnectionHandler(
-      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
-    this.socket = socket;
+      SocketChannel channel, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
+    this.channel = channel;
     this.adapterClientWrapper = adapterClientWrapper;
     this.defaultContext = GrpcCallContext.createDefault();
     this.defaultContextWithLAR =
@@ -92,74 +96,43 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
-  public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
-    this(socket, adapterClientWrapper, Optional.empty());
-  }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
   @Override
   public void run() {
-    LOG.debug("Handling connection from: {}", socket.getRemoteSocketAddress());
+    byte[] responseToWrite;
+    int streamId = defaultStreamId;
+     headerBuffer.clear();
+     try {
+      channel.read(headerBuffer);
+      headerBuffer.flip();
+      bodyBuffer = ByteBuffer.allocate(headerBuffer.getInt());
+      channel.read(bodyBuffer);
 
-    try (BufferedInputStream inputStream = new BufferedInputStream(socket.getInputStream());
-        BufferedOutputStream outputStream = new BufferedOutputStream(socket.getOutputStream())) {
-      processRequestsLoop(inputStream, outputStream);
-    } catch (IOException e) {
-      LOG.error(
-          "Exception handling connection from {}: {}",
-          socket.getRemoteSocketAddress(),
-          e.getMessage(),
-          e);
-    } finally {
-      try {
-        socket.close();
-      } catch (IOException e) {
-        LOG.warn("Error closing socket: {}", e.getMessage());
-      }
-    }
-  }
+      // 1. Combine header and body into a single payload array.
+      byte[] payload = new byte[headerBuffer.remaining() + bodyBuffer.remaining()];
+      headerBuffer.get(payload, 0, headerBuffer.remaining());
+      bodyBuffer.get(payload, headerBuffer.remaining(), bodyBuffer.remaining());
 
-  private void processRequestsLoop(InputStream inputStream, OutputStream outputStream)
-      throws IOException {
-    // Keep processing until End-Of-Stream is reached on the input
-    while (true) {
-      byte[] responseToWrite;
-      int streamId = defaultStreamId; // Initialize with a default value.
-      try {
-        // 1. Read and construct the payload from the input stream
-        byte[] payload = constructPayload(inputStream);
+      // 2. Prepare the payload (same logic as before).
+      PreparePayloadResult prepareResult = preparePayload(payload);
+      streamId = prepareResult.getStreamId();
+      Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
 
-        // 2. Check for EOF signaled by an empty payload
-        if (payload.length == 0) {
-          break; // Break out of the loop gracefully in case of EOF
-        }
-
-        // 3. Prepare the payload.
-        PreparePayloadResult prepareResult = preparePayload(payload);
-        streamId = prepareResult.getStreamId();
-        Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
-
-        // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-        if (!response.isPresent()) {
-          responseToWrite =
-              adapterClientWrapper.sendGrpcRequest(
-                  payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
-          // Now response holds the gRPC result, which might still be empty.
-        } else {
-          responseToWrite = response.get();
-        }
-      } catch (RuntimeException e) {
-        // 5. Handle any error during payload construction or attachment processing.
-        // Create a server error response to send back to the client.
-        LOG.error("Error processing request: ", e);
+      // 3. If needed, send the gRPC request (same logic as before).
+      if (!response.isPresent()) {
         responseToWrite =
-            serverErrorResponse(
-                streamId, "Server error during request processing: " + e.getMessage());
+            adapterClientWrapper.sendGrpcRequest(
+                payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
+      } else {
+        responseToWrite = response.get();
       }
+      channel.write(ByteBuffer.wrap(responseToWrite));
 
-      outputStream.write(responseToWrite);
-      outputStream.flush();
-    }
+     } catch (IOException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    } 
   }
 
   private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)

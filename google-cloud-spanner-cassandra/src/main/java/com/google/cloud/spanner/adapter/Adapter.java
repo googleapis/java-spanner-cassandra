@@ -15,6 +15,7 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
+import java.util.Iterator;
 import com.google.api.gax.core.CredentialsProvider;
 import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.core.GaxProperties;
@@ -31,11 +32,17 @@ import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.Collections;
 import java.util.concurrent.ExecutorService;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
 import java.util.concurrent.Executors;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.slf4j.Logger;
@@ -64,10 +71,13 @@ final class Adapter {
           "https://www.googleapis.com/auth/spanner.data");
 
   private AdapterClientWrapper adapterClientWrapper;
-  private ServerSocket serverSocket;
+  private Selector socketSelector;
+  private ServerSocketChannel serverSocketChannel;
   private ExecutorService executor;
+  private Thread tcpServingThread;
   private boolean started = false;
   private AdapterOptions options;
+  
 
   /**
    * Constructor for the Adapter class, specifying a specific address to bind to.
@@ -135,23 +145,81 @@ final class Adapter {
           new AdapterClientWrapper(adapterClient, attachmentsCache, sessionManager);
 
       // Start listening on the specified host and port.
-      serverSocket =
-          new ServerSocket(
-              options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
-      LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
+      InetSocketAddress isa = new InetSocketAddress(options.getInetAddress(), options.getTcpPort());
+      socketSelector = SelectorProvider.provider().openSelector();
+      serverSocketChannel = ServerSocketChannel.open();
+      serverSocketChannel.configureBlocking(false);
+      serverSocketChannel.socket().bind(isa);
+      serverSocketChannel.register(socketSelector, SelectionKey.OP_CONNECT);
+      
 
-      executor = Executors.newCachedThreadPool();
+      // Start the TCP packets relaying thread.
+    tcpServingThread =
+        new Thread("ServerSocket") {
+          @Override
+          public void run() {
+            try {
+              runSelectLoop();
+            } catch (IOException e) {
+            }
+          }
+        };
+    tcpServingThread.start();
+    LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
 
-      // Start accepting client connections.
-      executor.execute(this::acceptClientConnections);
-
-      started = true;
-      LOG.info("Adapter started for database '{}'.", options.getDatabaseUri());
+    executor = Executors.newCachedThreadPool();
+    started = true;
+    LOG.info("Adapter started for database '{}'.", options.getDatabaseUri());
 
     } catch (IOException | RuntimeException e) {
       throw new AdapterStartException(e);
     }
   }
+
+
+  public void runSelectLoop() throws IOException {
+
+    while (started) {
+      // wait for events
+			int readyCount = socketSelector.select();
+			if (readyCount == 0) {
+				continue;
+			}
+
+      Iterator<SelectionKey> selectionKeyIterator = socketSelector.selectedKeys().iterator();
+      while (selectionKeyIterator.hasNext()) {
+        SelectionKey key = selectionKeyIterator.next();
+        if (!key.isValid()) {
+          selectionKeyIterator.remove();
+          continue;
+        }
+
+        selectionKeyIterator.remove();
+
+        if (key.isAcceptable()) { // Accept client connections
+					doAccept(key);
+				} else if (key.isReadable()) { // Read from client
+					doRead(key);
+				} else if (key.isWritable()) {
+					// write data to client...
+				}
+      }
+    }
+  }
+
+  private void doAccept(SelectionKey key) throws IOException {
+    ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
+    SocketChannel socketChannel = serverSocketChannel.accept();
+    socketChannel.configureBlocking(false);
+    socketChannel.socket().setTcpNoDelay(true);
+    socketChannel.register(socketSelector, SelectionKey.OP_READ);
+  }
+
+    private void doRead(SelectionKey key) throws IOException {
+      SocketChannel channel = (SocketChannel) key.channel();
+      executor.execute(
+          new DriverConnectionHandler(channel, adapterClientWrapper, options.getMaxCommitDelay()));
+    }
 
   /**
    * Stops the adapter, shutting down the executor, closing the server socket, and closing the
@@ -160,33 +228,6 @@ final class Adapter {
    * @throws IOException If an I/O error occurs while closing the server socket.
    */
   void stop() throws IOException {
-    if (!started) {
-      throw new IllegalStateException("Adapter was never started!");
-    }
-    executor.shutdownNow();
-    serverSocket.close();
-    LOG.info("Adapter stopped.");
-  }
-
-  private void acceptClientConnections() {
-    try {
-      while (!Thread.currentThread().isInterrupted()) {
-        final Socket socket = serverSocket.accept();
-        // Optimize for latency (2), then bandwidth (1) and then connection time (0).
-        socket.setPerformancePreferences(0, 2, 1);
-        // Turn on TCP_NODELAY to optimize for chatty protocol that prefers low latency.
-        socket.setTcpNoDelay(true);
-        executor.execute(
-            new DriverConnectionHandler(socket, adapterClientWrapper, options.getMaxCommitDelay()));
-        LOG.debug("Accepted client connection from: {}", socket.getRemoteSocketAddress());
-      }
-    } catch (SocketException e) {
-      if (!serverSocket.isClosed()) {
-        LOG.error("Error accepting client connection", e);
-      }
-    } catch (IOException e) {
-      LOG.error("Error accepting client connection", e);
-    }
   }
 
   private static CredentialsProvider setUpCredentialsProvider(final Credentials credentials) {
