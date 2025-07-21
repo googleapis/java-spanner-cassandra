@@ -8,7 +8,7 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -22,15 +22,17 @@ import com.google.api.gax.rpc.ResponseObserver;
 import com.google.api.gax.rpc.StreamController;
 import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
+import io.netty.buffer.CompositeByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * A {@link ResponseObserver} that handles streaming responses from the {@code AdaptMessage} gRPC
- * call, updates the states and offers the payloads to the write queue.
+ * call and writes the assembled payload back to the Netty channel.
  *
  * <p>It is stateful for the duration of one gRPC call, buffering all incoming {@link
  * AdaptMessageResponse} payloads in memory. During the response assembly, the <strong>last</strong>
@@ -40,15 +42,15 @@ class AdaptMessageResponseObserver implements ResponseObserver<AdaptMessageRespo
   private static final Logger LOG = LoggerFactory.getLogger(AdaptMessageResponseObserver.class);
   private final int streamId;
   private final AttachmentsCache attachmentsCache;
-  private final BlockingQueue<ByteString> writeQueue;
+  private final ChannelHandlerContext ctx;
 
-  private List<ByteString> collectedPayloads = new ArrayList<>();
+  private final List<ByteString> collectedPayloads = new ArrayList<>();
 
   AdaptMessageResponseObserver(
-      int streamId, BlockingQueue<ByteString> writeQueue, AttachmentsCache attachmentsCache) {
+      int streamId, ChannelHandlerContext ctx, AttachmentsCache attachmentsCache) {
     this.streamId = streamId;
     this.attachmentsCache = attachmentsCache;
-    this.writeQueue = writeQueue;
+    this.ctx = ctx;
   }
 
   @Override
@@ -60,31 +62,47 @@ class AdaptMessageResponseObserver implements ResponseObserver<AdaptMessageRespo
 
   @Override
   public void onError(Throwable t) {
-    // If the gRPC call fails, write failure to the socket.
+    // If the gRPC call fails, write an error frame back to the client channel.
     LOG.error("Error executing AdaptMessage request: ", t);
-    writeQueue.offer(ByteString.copyFrom(serverErrorResponse(streamId, t.getMessage())));
+    byte[] errorPayload = serverErrorResponse(streamId, t.getMessage());
+    ctx.writeAndFlush(Unpooled.wrappedBuffer(errorPayload));
   }
 
   @Override
   public void onComplete() {
     // When the stream is finished, process the collected payloads.
     if (collectedPayloads.isEmpty()) {
-      writeQueue.offer(
-          ByteString.copyFrom(
-              serverErrorResponse(streamId, "No response received from the server.")));
+      byte[] errorPayload = serverErrorResponse(streamId, "No response received from the server.");
+      ctx.writeAndFlush(Unpooled.wrappedBuffer(errorPayload));
       return;
     }
 
+    // Use a CompositeByteBuf for zero-copy stitching of the payloads.
     final int numPayloads = collectedPayloads.size();
-    writeQueue.offer(collectedPayloads.get(numPayloads - 1));
-    for (int i = 0; i < numPayloads - 1; i++) {
-      writeQueue.offer(collectedPayloads.get(i));
+    CompositeByteBuf composite = ctx.alloc().compositeBuffer(numPayloads);
+    try {
+      // In case of multiple responses, the last response contains the header.
+      // So add it to our composite buffer first.
+      composite.addComponent(
+          true,
+          Unpooled.wrappedBuffer(collectedPayloads.get(numPayloads - 1).asReadOnlyByteBuffer()));
+
+      // Then add the remaining responses.
+      for (int i = 0; i < numPayloads - 1; i++) {
+        composite.addComponent(
+            true, Unpooled.wrappedBuffer(collectedPayloads.get(i).asReadOnlyByteBuffer()));
+      }
+      ctx.writeAndFlush(composite);
+    } catch (Exception e) {
+      // Release buffer in case of error.
+      composite.release();
+      LOG.error("Error while stitching payloads: ", e);
+      onError(e);
     }
-    collectedPayloads.clear();
   }
 
   @Override
   public void onStart(StreamController controller) {
-    // Do nothing.
+    // Do nothing. Flow control could be implemented here if needed.
   }
 }

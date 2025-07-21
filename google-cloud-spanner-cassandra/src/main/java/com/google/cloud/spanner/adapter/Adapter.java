@@ -30,13 +30,17 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.SocketException;
 import java.util.Collections;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +52,6 @@ final class Adapter {
   private static final Logger LOG = LoggerFactory.getLogger(Adapter.class);
   private static final String RESOURCE_PREFIX_HEADER_KEY = "google-cloud-resource-prefix";
   private static final long MAX_GLOBAL_STATE_SIZE = (long) (1e8 / 256); // ~100 MB
-  private static final int DEFAULT_CONNECTION_BACKLOG = 50;
   private static final String ENV_VAR_GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS =
       "GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS";
   private static final String USER_AGENT_KEY = "user-agent";
@@ -64,11 +67,14 @@ final class Adapter {
           "https://www.googleapis.com/auth/cloud-platform",
           "https://www.googleapis.com/auth/spanner.data");
 
+  // Netty Event Loop Groups for non-blocking I/O
+  private final EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+  private final EventLoopGroup workerGroup = new NioEventLoopGroup();
+  private Channel serverChannel;
+
   private AttachmentsCache attachmentsCache;
   private AdapterClient adapterClient;
   private SessionManager sessionManager;
-  private ServerSocket serverSocket;
-  private ExecutorService executor;
   private boolean started = false;
   private AdapterOptions options;
 
@@ -81,14 +87,14 @@ final class Adapter {
     this.options = options;
   }
 
-  /** Starts the adapter, initializing the local TCP server and handling client connections. */
+  /** Starts the adapter, initializing the non-blocking TCP server. */
   void start() {
     if (started) {
       return;
     }
 
     try {
-
+      // The gRPC client setup remains the same.
       Credentials credentials = options.getCredentials();
       if (credentials == null) {
         credentials = GoogleCredentials.getApplicationDefault();
@@ -107,8 +113,6 @@ final class Adapter {
 
       if (isEnableDirectPathXdsEnv()) {
         channelProviderBuilder.setAttemptDirectPath(true);
-        // This will let the credentials try to fetch a hard-bound access token if the runtime
-        // environment supports it.
         channelProviderBuilder.setAllowHardBoundTokenTypes(
             Collections.singletonList(InstantiatingGrpcChannelProvider.HardBoundTokenTypes.ALTS));
         channelProviderBuilder.setAttemptDirectPathXds();
@@ -130,72 +134,62 @@ final class Adapter {
               .build();
 
       adapterClient = AdapterClient.create(settings);
-
       attachmentsCache = new AttachmentsCache(MAX_GLOBAL_STATE_SIZE);
       sessionManager = new SessionManager(adapterClient, options.getDatabaseUri());
+      sessionManager.getSession(); // Create initial session to verify database.
 
-      // Create initial session to verify database existence
-      sessionManager.getSession();
+      // Configure the server using Netty's bootstrap.
+      ServerBootstrap bootstrap = new ServerBootstrap();
+      bootstrap
+          .group(bossGroup, workerGroup)
+          .channel(NioServerSocketChannel.class)
+          .childHandler(
+              new ChannelInitializer<SocketChannel>() {
+                @Override
+                public void initChannel(final SocketChannel ch) {
+                  ch.pipeline()
+                      .addLast(
+                          // This decoder handles message framing automatically based on the length
+                          // field in the header. This replaces constructPayload().
+                          // Max frame size: 128MB, length field offset: 5, length field size: 4.
+                          new LengthFieldBasedFrameDecoder(128 * 1024 * 1024, 5, 4, 0, 0),
+                          // The new handler replaces the old Runnable.
+                          new DriverConnectionHandler(
+                              adapterClient,
+                              sessionManager,
+                              attachmentsCache,
+                              options.getMaxCommitDelay()));
+                }
+              })
+          .option(ChannelOption.SO_BACKLOG, 128)
+          .childOption(ChannelOption.SO_KEEPALIVE, true);
 
-      // Start listening on the specified host and port.
-      serverSocket =
-          new ServerSocket(
-              options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
-      LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
-
-      executor = Executors.newCachedThreadPool();
-      // Start accepting client connections.
-      executor.execute(this::acceptClientConnections);
-
+      // Bind and start to accept incoming connections.
+      serverChannel =
+          bootstrap.bind(options.getInetAddress(), options.getTcpPort()).sync().channel();
+      LOG.info("Adapter started. Listening for connections on {}", serverChannel.localAddress());
       started = true;
-      LOG.info("Adapter started for database '{}'.", options.getDatabaseUri());
 
-    } catch (IOException | RuntimeException e) {
+    } catch (IOException | RuntimeException | InterruptedException e) {
       throw new AdapterStartException(e);
     }
   }
 
-  /**
-   * Stops the adapter, shutting down the executor, closing the server socket, and closing the
-   * adapter client.
-   *
-   * @throws IOException If an I/O error occurs while closing the server socket.
-   */
-  void stop() throws IOException {
+  /** Stops the adapter, shutting down the Netty event loops and closing the adapter client. */
+  void stop() {
     if (!started) {
       throw new IllegalStateException("Adapter was never started!");
     }
-    executor.shutdownNow();
-    serverSocket.close();
+    try {
+      serverChannel.close().awaitUninterruptibly();
+    } finally {
+      bossGroup.shutdownGracefully();
+      workerGroup.shutdownGracefully();
+    }
     LOG.info("Adapter stopped.");
   }
 
-  private void acceptClientConnections() {
-    try {
-      while (!Thread.currentThread().isInterrupted()) {
-        final Socket socket = serverSocket.accept();
-        // Optimize for latency (2), then bandwidth (1) and then connection time (0).
-        socket.setPerformancePreferences(0, 2, 1);
-        // Turn on TCP_NODELAY to optimize for chatty protocol that prefers low latency.
-        socket.setTcpNoDelay(true);
-        executor.execute(
-            new DriverConnectionHandler(
-                socket,
-                adapterClient,
-                sessionManager,
-                attachmentsCache,
-                options.getMaxCommitDelay()));
-        LOG.debug("Accepted client connection from: {}", socket.getRemoteSocketAddress());
-      }
-    } catch (SocketException e) {
-      if (!serverSocket.isClosed()) {
-        LOG.error("Error accepting client connection", e);
-      }
-    } catch (IOException e) {
-      LOG.error("Error accepting client connection", e);
-    }
-  }
-
+  // Helper methods remain the same...
   private static CredentialsProvider setUpCredentialsProvider(final Credentials credentials) {
     Credentials scopedCredentials = getScopedCredentials(credentials);
     if (scopedCredentials != null && scopedCredentials != NoCredentials.getInstance()) {

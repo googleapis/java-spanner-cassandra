@@ -23,7 +23,6 @@ import com.datastax.oss.driver.api.core.metadata.Metadata;
 import com.datastax.oss.driver.api.core.metrics.Metrics;
 import com.datastax.oss.driver.api.core.session.Request;
 import com.datastax.oss.driver.api.core.type.reflect.GenericType;
-import java.io.IOException;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -155,13 +154,6 @@ public final class SpannerCqlSession implements CqlSession {
   }
 
   private CompletionStage<Void> stopAdapterAsync() {
-    return CompletableFuture.runAsync(
-        () -> {
-          try {
-            adapter.stop();
-          } catch (IOException e) {
-            LOG.error("Error stopping adapter.", e);
-          }
-        });
+    return CompletableFuture.runAsync(adapter::stop);
   }
 }

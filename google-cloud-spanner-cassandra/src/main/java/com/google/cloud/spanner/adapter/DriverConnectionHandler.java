@@ -13,7 +13,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
 package com.google.cloud.spanner.adapter;
 
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
@@ -21,7 +20,6 @@ import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unprepared
 import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
 
 import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
-import com.datastax.oss.driver.shaded.guava.common.annotations.VisibleForTesting;
 import com.datastax.oss.protocol.internal.Compressor;
 import com.datastax.oss.protocol.internal.Frame;
 import com.datastax.oss.protocol.internal.FrameCodec;
@@ -37,12 +35,8 @@ import com.google.spanner.adapter.v1.AdapterClient;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.Socket;
-import java.nio.ByteBuffer;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -50,17 +44,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Handles the connection from a driver, translating TCP data to gRPC requests and vice versa. */
-final class DriverConnectionHandler implements Runnable {
+/**
+ * Handles connection logic for a single driver connection on a Netty channel. This class is
+ * stateful for each connection but does not manage its own threads.
+ */
+final class DriverConnectionHandler extends ChannelInboundHandlerAdapter {
 
   private static final Logger LOG = LoggerFactory.getLogger(DriverConnectionHandler.class);
-  private static final int HEADER_LENGTH = 9;
   private static final String PREPARED_QUERY_ID_ATTACHMENT_PREFIX = "pqid/";
   private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
@@ -69,7 +62,6 @@ final class DriverConnectionHandler implements Runnable {
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
-  private final Socket socket;
   private final AdapterClient adapterClient;
   private final SessionManager sessionManager;
   private final AttachmentsCache attachmentsCache;
@@ -79,27 +71,12 @@ final class DriverConnectionHandler implements Runnable {
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
-  private static final AtomicInteger numConnections = new AtomicInteger(0);
-  private final BlockingQueue<ByteString> writeQueue = new LinkedBlockingQueue<>();
-  private static final ByteString DONE = ByteString.EMPTY;
-  private final int connectionId;
 
-  /**
-   * Constructor for DriverConnectionHandler.
-   *
-   * @param socket The client's socket.
-   * @param adapterClient The adapter client used for gRPC communication.
-   * @param sessionManager The spanner multiplexed session maintainer object.
-   * @param attachmentsCache The global cache for the attachments.
-   * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
-   */
   DriverConnectionHandler(
-      Socket socket,
       AdapterClient adapterClient,
       SessionManager sessionManager,
       AttachmentsCache attachmentsCache,
       Optional<Duration> maxCommitDelay) {
-    this.socket = socket;
     this.adapterClient = adapterClient;
     this.sessionManager = sessionManager;
     this.attachmentsCache = attachmentsCache;
@@ -111,204 +88,63 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       this.maxCommitDelayMillis = Optional.empty();
     }
-    this.connectionId = numConnections.incrementAndGet();
   }
 
-  @VisibleForTesting
-  DriverConnectionHandler(
-      Socket socket,
-      AdapterClient adapterClient,
-      SessionManager sessionManager,
-      AttachmentsCache attachmentsCache) {
-    this(socket, adapterClient, sessionManager, attachmentsCache, Optional.empty());
-  }
-
-  /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
   @Override
-  public void run() {
-    LOG.debug("Handling connection from: {}", socket.getRemoteSocketAddress());
-    try (BufferedInputStream inputStream = new BufferedInputStream(socket.getInputStream());
-        BufferedOutputStream outputStream = new BufferedOutputStream(socket.getOutputStream())) {
-      // Create one writer thread per connection to synchronize writes.
-      Thread writerThread =
-          new Thread(
-              () -> {
-                try {
-                  while (!Thread.currentThread().isInterrupted()) {
-                    ByteString response = writeQueue.take();
-                    if (response == DONE) {
-                      break;
-                    }
-                    response.writeTo(outputStream);
-                    outputStream.flush();
-                  }
-                } catch (IOException e) {
-                  if (!socket.isClosed()) {
-                    LOG.error("Writer error: " + e);
-                  }
-                } catch (InterruptedException e) {
-                  LOG.debug("Writer thread interrupted.");
-                  // Preserve interrupt status
-                  Thread.currentThread().interrupt();
-                }
-              });
-      writerThread.setName("writer-thread-" + connectionId);
-      writerThread.start();
+  public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    LOG.debug("Accepted client connection from: {}", ctx.channel().remoteAddress());
+    super.channelActive(ctx);
+  }
 
-      // Start accepting requests on the socket.
-      processRequests(inputStream);
-
-      // Signal the writer thread to stop.
-      writeQueue.offer(DONE);
-
-      try {
-        // Wait for the writer thread to complete before closing the socket.
-        writerThread.join();
-      } catch (InterruptedException e) {
-        LOG.warn("Wait for writer thread to complete interrupted: {}", e.getMessage());
-        // Preserve interrupt status
-        Thread.currentThread().interrupt();
-      }
-
-    } catch (IOException e) {
-      LOG.error(
-          "Error handling connection from {}: {}", socket.getRemoteSocketAddress(), e.getMessage());
+  /** This method is called by the Netty event loop whenever a complete data frame is received. */
+  @Override
+  public void channelRead(ChannelHandlerContext ctx, Object msg) {
+    ByteBuf frame = (ByteBuf) msg;
+    try {
+      processRequest(ctx, frame);
     } finally {
-      try {
-        socket.close();
-      } catch (IOException e) {
-        LOG.warn("Error closing socket: {}", e.getMessage());
+      // The LengthFieldBasedFrameDecoder returns a retained slice of the buffer,
+      // so we must release it after processing.
+      frame.release();
+    }
+  }
+
+  private void processRequest(ChannelHandlerContext ctx, ByteBuf frame) {
+    int streamId = defaultStreamId;
+    try {
+      // The frame decoder ensures we have a full payload, so we can read its bytes.
+      byte[] payload = new byte[frame.readableBytes()];
+      frame.readBytes(payload);
+
+      PreparePayloadResult prepareResult = preparePayload(payload);
+      Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
+
+      if (!response.isPresent()) {
+        adaptMessageAsync(ctx, prepareResult.getStreamId(), payload, prepareResult);
+        return;
       }
+      // Write the immediate error response back to the client.
+      ctx.writeAndFlush(Unpooled.wrappedBuffer(response.get()));
+
+    } catch (RuntimeException e) {
+      LOG.error("Error processing request: ", e);
+      byte[] errorResponse =
+          serverErrorResponse(
+              streamId, "Server error during request processing: " + e.getMessage());
+      ctx.writeAndFlush(Unpooled.wrappedBuffer(errorResponse));
     }
   }
 
-  private void processRequests(InputStream inputStream) throws IOException {
-    // Keep processing until End-Of-Stream is reached on the input
-    while (true) {
-      byte[] responseToWrite;
-      int streamId = defaultStreamId; // Initialize with a default value.
-      try {
-        // 1. Read and construct the payload from the input stream
-        byte[] payload = constructPayload(inputStream);
-
-        // 2. Check for EOF signaled by an empty payload
-        if (payload.length == 0) {
-          break; // Break out of the loop gracefully in case of EOF
-        }
-
-        // 3. Prepare the payload.
-        PreparePayloadResult prepareResult = preparePayload(payload);
-        streamId = prepareResult.getStreamId();
-        Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
-
-        // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-        if (!response.isPresent()) {
-          // Make async AdaptMessage gRPC call and move on to reading next request.
-          adaptMessageAsync(streamId, payload, prepareResult);
-          continue;
-        }
-        responseToWrite = response.get();
-
-      } catch (RuntimeException e) {
-        // 5. Handle any error during payload construction or attachment processing.
-        // Create a server error response to send back to the client.
-        LOG.error("Error processing request: ", e);
-        responseToWrite =
-            serverErrorResponse(
-                streamId, "Server error during request processing: " + e.getMessage());
-      }
-
-      writeQueue.offer(ByteString.copyFrom(responseToWrite));
-    }
+  @Override
+  public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+    LOG.error("Exception caught on connection, closing channel.", cause);
+    ctx.close();
   }
 
-  private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)
-      throws IOException {
-    if (off < 0 || len < 0 || len > b.length - off) {
-      throw new IndexOutOfBoundsException(
-          String.format("offset %d, length %d, buffer length %d", off, len, b.length));
-    }
-
-    if (len == 0) {
-      return 0;
-    }
-
-    int totalBytesRead = 0;
-    int bytesReadInCurrentLoop;
-
-    // Loop until the desired number of bytes are read or EOF is reached
-    while (totalBytesRead < len) {
-      // Calculate how many bytes are still needed
-      int remaining = len - totalBytesRead;
-      // Calculate the current offset in the buffer
-      int currentOffset = off + totalBytesRead;
-
-      // Attempt to read the remaining bytes
-      bytesReadInCurrentLoop = in.read(b, currentOffset, remaining);
-
-      if (bytesReadInCurrentLoop == -1) {
-        // End Of Stream (EOF) reached before 'len' bytes were read.
-        break;
-      }
-
-      totalBytesRead += bytesReadInCurrentLoop;
-    }
-
-    return totalBytesRead;
-  }
-
-  private byte[] constructPayload(InputStream socketInputStream)
-      throws IOException, IllegalArgumentException {
-    byte[] header = new byte[HEADER_LENGTH];
-    int bytesRead = readNBytesJava8(socketInputStream, header, 0, HEADER_LENGTH);
-    if (bytesRead == 0) {
-      // EOF
-      return new byte[0];
-    } else if (bytesRead < HEADER_LENGTH) {
-      throw new IllegalArgumentException("Payload is not well formed.");
-    }
-
-    // Extract the body length from the header.
-    int bodyLength = load32BigEndian(header, 5);
-
-    if (bodyLength < 0) {
-      throw new IllegalArgumentException("Payload is not well formed.");
-    }
-
-    byte[] body = new byte[bodyLength];
-    if (readNBytesJava8(socketInputStream, body, 0, bodyLength) < bodyLength) {
-      throw new IllegalArgumentException("Payload is not well formed.");
-    }
-
-    // Combine the header and body into the payload.
-    byte[] payload = new byte[HEADER_LENGTH + bodyLength];
-    System.arraycopy(header, 0, payload, 0, HEADER_LENGTH);
-    System.arraycopy(body, 0, payload, HEADER_LENGTH, bodyLength);
-
-    return payload;
-  }
-
-  private int load32BigEndian(byte[] bytes, int offset) {
-    return ByteBuffer.wrap(bytes, offset, 4).getInt();
-  }
-
-  /**
-   * Attempts to prepare the given payload prior to sending the request.
-   *
-   * <p>This method checks the type of message encoded in the payload and sets the appropriate
-   * attachment response and context. For attachments, it checks if the payload is an Execute or
-   * Batch request and if it contains a queryId. If a queryId is found, it checks if a corresponding
-   * prepared query exists in the global state. If a prepared query is found, it adds the prepared
-   * query to the attachments map. If a prepared query is not found, it sets an error in the result
-   * object.
-   *
-   * @param payload The payload to process.
-   * @return A {@link PreparePayloadResult} containing the result of the operation.
-   */
   private PreparePayloadResult preparePayload(byte[] payload) {
     ByteBuf payloadBuf = Unpooled.wrappedBuffer(payload);
     Frame frame = serverFrameCodec.decode(payloadBuf);
-    payloadBuf.release();
+    payloadBuf.release(); // decode() creates a new message, so we can release this buffer.
 
     Map<String, String> attachments = new HashMap<>();
     if (frame.message instanceof Execute) {
@@ -322,7 +158,8 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
-  private void adaptMessageAsync(int streamId, byte[] payload, PreparePayloadResult prepareResult) {
+  private void adaptMessageAsync(
+      ChannelHandlerContext ctx, int streamId, byte[] payload, PreparePayloadResult prepareResult) {
     AdaptMessageRequest request =
         AdaptMessageRequest.newBuilder()
             .setName(sessionManager.getSession().getName())
@@ -330,13 +167,15 @@ final class DriverConnectionHandler implements Runnable {
             .putAllAttachments(prepareResult.getAttachments())
             .setPayload(ByteString.copyFrom(payload))
             .build();
+    // The observer now takes the ChannelHandlerContext to write the response back.
     AdaptMessageResponseObserver responseObserver =
-        new AdaptMessageResponseObserver(streamId, writeQueue, attachmentsCache);
+        new AdaptMessageResponseObserver(streamId, ctx, attachmentsCache);
     adapterClient
         .adaptMessageCallable()
         .call(request, responseObserver, prepareResult.getContext());
   }
 
+  // The prepare...Message and other helper methods remain largely the same.
   private PreparePayloadResult prepareExecuteMessage(
       Execute message, int streamId, Map<String, String> attachments) {
     ApiCallContext context;
