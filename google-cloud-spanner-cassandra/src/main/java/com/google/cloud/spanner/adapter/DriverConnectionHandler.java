@@ -152,7 +152,7 @@ final class DriverConnectionHandler implements Runnable {
                   Thread.currentThread().interrupt();
                 }
               });
-      writerThread.setName("Writer thread " + connectionId);
+      writerThread.setName("writer-thread-" + connectionId);
       writerThread.start();
 
       // Start accepting requests on the socket.
