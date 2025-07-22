@@ -30,6 +30,10 @@ import com.datastax.oss.protocol.internal.request.Query;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.common.collect.ImmutableMap;
+import com.google.protobuf.ByteString;
+import com.google.spanner.adapter.v1.AdaptMessageRequest;
+import com.google.spanner.adapter.v1.AdapterClient;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
@@ -63,7 +67,9 @@ final class DriverConnectionHandler implements Runnable {
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
-  private final AdapterClientWrapper adapterClientWrapper;
+  private final AdapterClient adapterClient;
+  private final SessionManager sessionManager;
+  private final AttachmentsCache attachmentsCache;
   private final Optional<String> maxCommitDelayMillis;
   private final GrpcCallContext defaultContext;
   private final GrpcCallContext defaultContextWithLAR;
@@ -79,9 +85,13 @@ final class DriverConnectionHandler implements Runnable {
    * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
    */
   public DriverConnectionHandler(
-      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
+      Socket socket, AdapterClient adapterClient,
+      SessionManager sessionManager,
+      AttachmentsCache attachmentsCache, Optional<Duration> maxCommitDelay) {
     this.socket = socket;
-    this.adapterClientWrapper = adapterClientWrapper;
+    this.adapterClient = adapterClient;
+    this.sessionManager = sessionManager;
+    this.attachmentsCache = attachmentsCache;
     this.defaultContext = GrpcCallContext.createDefault();
     this.defaultContextWithLAR =
         GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
@@ -92,9 +102,6 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
-  public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
-    this(socket, adapterClientWrapper, Optional.empty());
-  }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
   @Override
@@ -141,10 +148,9 @@ final class DriverConnectionHandler implements Runnable {
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
         if (!response.isPresent()) {
-          responseToWrite =
-              adapterClientWrapper.sendGrpcRequest(
-                  payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
-          // Now response holds the gRPC result, which might still be empty.
+          adaptMessageAsync(streamId, payload, prepareResult, outputStream);
+          continue;
+
         } else {
           responseToWrite = response.get();
         }
@@ -161,6 +167,23 @@ final class DriverConnectionHandler implements Runnable {
       outputStream.flush();
     }
   }
+
+    private void adaptMessageAsync(
+      int streamId, byte[] payload, PreparePayloadResult prepareResult, OutputStream outputStream) {
+    AdaptMessageRequest request =
+        AdaptMessageRequest.newBuilder()
+            .setName(sessionManager.getSession().getName())
+            .setProtocol("cassandra")
+            .putAllAttachments(prepareResult.getAttachments())
+            .setPayload(ByteString.copyFrom(payload))
+            .build();
+    AdaptMessageResponseObserver responseObserver =
+        new AdaptMessageResponseObserver(streamId, outputStream, attachmentsCache, this);
+    adapterClient
+        .adaptMessageCallable()
+        .call(request, responseObserver, prepareResult.getContext());
+  }
+
 
   private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)
       throws IOException {
@@ -317,7 +340,7 @@ final class DriverConnectionHandler implements Runnable {
   private Optional<byte[]> prepareAttachmentForQueryId(
       int streamId, Map<String, String> attachments, byte[] queryId) {
     String key = constructKey(queryId);
-    Optional<String> val = adapterClientWrapper.getAttachmentsCache().get(key);
+    Optional<String> val = attachmentsCache.get(key);
     if (!val.isPresent()) {
       return Optional.of(unpreparedResponse(streamId, queryId));
     }
