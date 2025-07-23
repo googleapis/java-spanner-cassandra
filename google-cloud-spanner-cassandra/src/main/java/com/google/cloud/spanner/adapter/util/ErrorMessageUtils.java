@@ -18,6 +18,8 @@ package com.google.cloud.spanner.adapter.util;
 
 import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
 import com.datastax.oss.protocol.internal.Compressor;
+import com.datastax.oss.protocol.internal.response.result.Void;
+import com.datastax.oss.protocol.internal.response.Result;
 import com.datastax.oss.protocol.internal.Frame;
 import com.datastax.oss.protocol.internal.FrameCodec;
 import com.datastax.oss.protocol.internal.ProtocolConstants.ErrorCode;
@@ -60,6 +62,16 @@ public final class ErrorMessageUtils {
   public static byte[] unpreparedResponse(int streamId, byte[] queryId) {
     Unprepared errorMsg = new Unprepared("Unprepared", queryId);
     return errorResponse(streamId, errorMsg);
+  }
+
+    public static byte[] result(int streamId) {
+      Result result = Void.INSTANCE;
+
+      Frame responseFrame =
+          Frame.forResponse(
+              PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, Collections.emptyList(), result);
+      ByteBuf responseBuf = serverFrameCodec.encode(responseFrame);
+      return convertByteBufToByteArray(responseBuf);
   }
 
   /**

@@ -16,6 +16,7 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.result;
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
 import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
@@ -29,6 +30,9 @@ import com.datastax.oss.protocol.internal.request.Execute;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
+import com.google.cloud.spanner.DatabaseClient;
+import com.google.cloud.spanner.ResultSet;
+import com.google.cloud.spanner.Statement;
 import com.google.common.collect.ImmutableMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -70,6 +74,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final int defaultStreamId = -1;
+  DatabaseClient dbClient;
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -79,7 +84,8 @@ final class DriverConnectionHandler implements Runnable {
    * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
    */
   public DriverConnectionHandler(
-      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
+      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay,
+      DatabaseClient dbClient) {
     this.socket = socket;
     this.adapterClientWrapper = adapterClientWrapper;
     this.defaultContext = GrpcCallContext.createDefault();
@@ -90,11 +96,9 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       this.maxCommitDelayMillis = Optional.empty();
     }
+    this.dbClient = dbClient;
   }
 
-  public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
-    this(socket, adapterClientWrapper, Optional.empty());
-  }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
   @Override
@@ -146,7 +150,14 @@ final class DriverConnectionHandler implements Runnable {
                   payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
           // Now response holds the gRPC result, which might still be empty.
         } else {
-          responseToWrite = response.get();
+          long rowCOunt = 0;
+          try (ResultSet resultSet = dbClient.singleUse().executeQuery((Statement.of("select guid, term, matches from  contact_indices_013 limit 1;")))) {
+            while (resultSet.next()) {
+              rowCOunt++;
+            }
+          }
+
+          responseToWrite = result(streamId);
         }
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
@@ -316,13 +327,9 @@ final class DriverConnectionHandler implements Runnable {
 
   private Optional<byte[]> prepareAttachmentForQueryId(
       int streamId, Map<String, String> attachments, byte[] queryId) {
-    String key = constructKey(queryId);
-    Optional<String> val = adapterClientWrapper.getAttachmentsCache().get(key);
-    if (!val.isPresent()) {
-      return Optional.of(unpreparedResponse(streamId, queryId));
-    }
-    attachments.put(key, val.get());
-    return Optional.empty();
+
+      return Optional.of(result(streamId));
+
   }
 
   private static String constructKey(byte[] queryId) {
