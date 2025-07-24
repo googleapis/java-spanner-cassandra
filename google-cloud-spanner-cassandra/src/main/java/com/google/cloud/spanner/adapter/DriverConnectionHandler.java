@@ -16,8 +16,7 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.result;
 import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
 
 import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
@@ -30,6 +29,9 @@ import com.datastax.oss.protocol.internal.request.Execute;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
+import com.google.cloud.spanner.AsyncResultSet;
+import com.google.cloud.spanner.DatabaseClient;
+import com.google.cloud.spanner.Statement;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageRequest;
@@ -85,6 +87,7 @@ final class DriverConnectionHandler implements Runnable {
   private final BlockingQueue<ByteString> writeQueue = new LinkedBlockingQueue<>();
   private final Map<String, String> attachments = new HashMap<>();
   private final byte[] headerBuffer = new byte[HEADER_LENGTH];
+  private final DatabaseClient dbClient;
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -101,7 +104,8 @@ final class DriverConnectionHandler implements Runnable {
       AdapterClient adapterClient,
       SessionManager sessionManager,
       AttachmentsCache attachmentsCache,
-      Optional<Duration> maxCommitDelay) {
+      Optional<Duration> maxCommitDelay,
+      DatabaseClient dbClient) {
     this.executor = executor;
     this.socket = socket;
     this.adapterClient = adapterClient;
@@ -115,6 +119,7 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       this.maxCommitDelayMillis = Optional.empty();
     }
+    this.dbClient = dbClient;
   }
 
   @VisibleForTesting
@@ -124,7 +129,7 @@ final class DriverConnectionHandler implements Runnable {
       AdapterClient adapterClient,
       SessionManager sessionManager,
       AttachmentsCache attachmentsCache) {
-    this(executor, socket, adapterClient, sessionManager, attachmentsCache, Optional.empty());
+    this(executor, socket, adapterClient, sessionManager, attachmentsCache, Optional.empty(), null);
   }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
@@ -191,41 +196,45 @@ final class DriverConnectionHandler implements Runnable {
     while (true) {
       byte[] responseToWrite;
       int streamId = defaultStreamId; // Initialize with a default value.
-      try {
-        // 1. Read and construct the payload from the input stream
-        byte[] payload = constructPayload(inputStream);
 
-        // 2. Check for EOF signaled by an empty payload
-        if (payload.length == 0) {
-          break; // Break out of the loop gracefully in case of EOF
-        }
+      // 1. Read and construct the payload from the input stream
+      byte[] payload = constructPayload(inputStream);
 
-        // Clear the attachments before preparing next payload.
-        this.attachments.clear();
-
-        // 3. Prepare the payload.
-        PreparePayloadResult prepareResult = preparePayload(payload);
-        streamId = prepareResult.getStreamId();
-        Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
-
-        // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-        if (!response.isPresent()) {
-          // Make async AdaptMessage gRPC call and move on to reading next request.
-          adaptMessageAsync(streamId, payload, prepareResult);
-          continue;
-        }
-        responseToWrite = response.get();
-
-      } catch (RuntimeException e) {
-        // 5. Handle any error during payload construction or attachment processing.
-        // Create a server error response to send back to the client.
-        LOG.error("Error processing request: ", e);
-        responseToWrite =
-            serverErrorResponse(
-                streamId, "Server error during request processing: " + e.getMessage());
+      // 2. Check for EOF signaled by an empty payload
+      if (payload.length == 0) {
+        break; // Break out of the loop gracefully in case of EOF
       }
 
-      writeQueue.offer(ByteString.copyFrom(responseToWrite));
+      // Clear the attachments before preparing next payload.
+      this.attachments.clear();
+
+      // 3. Prepare the payload.
+      PreparePayloadResult prepareResult = preparePayload(payload);
+      int streamID = prepareResult.getStreamId();
+      Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
+
+      // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
+      if (!response.isPresent()) {
+        // Make async AdaptMessage gRPC call and move on to reading next request.
+        adaptMessageAsync(streamId, payload, prepareResult);
+        continue;
+      }
+      AsyncResultSet asyncResultSet =
+          dbClient
+              .singleUse()
+              .executeQueryAsync(
+                  Statement.of("select guid, term, matches from contact_indices_013 limit 1;"));
+
+      asyncResultSet.setCallback(
+          executor,
+          (rs) -> {
+            writeQueue.offer(ByteString.copyFrom(result(streamID)));
+            return AsyncResultSet.CallbackResponse.DONE;
+          });
+
+      // responseToWrite = response.get();
+
+      // writeQueue.offer(ByteString.copyFrom(responseToWrite));
     }
   }
 
@@ -398,13 +407,7 @@ final class DriverConnectionHandler implements Runnable {
 
   private Optional<byte[]> prepareAttachmentForQueryId(
       int streamId, Map<String, String> attachments, byte[] queryId) {
-    String key = constructKey(queryId);
-    Optional<String> val = attachmentsCache.get(key);
-    if (!val.isPresent()) {
-      return Optional.of(unpreparedResponse(streamId, queryId));
-    }
-    attachments.put(key, val.get());
-    return Optional.empty();
+    return Optional.of(result(streamId));
   }
 
   private static String constructKey(byte[] queryId) {

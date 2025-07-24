@@ -22,7 +22,9 @@ import com.datastax.oss.protocol.internal.Frame;
 import com.datastax.oss.protocol.internal.FrameCodec;
 import com.datastax.oss.protocol.internal.ProtocolConstants.ErrorCode;
 import com.datastax.oss.protocol.internal.response.Error;
+import com.datastax.oss.protocol.internal.response.Result;
 import com.datastax.oss.protocol.internal.response.error.Unprepared;
+import com.datastax.oss.protocol.internal.response.result.Void;
 import com.google.api.core.InternalApi;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -85,6 +87,16 @@ public final class ErrorMessageUtils {
     Frame responseFrame =
         Frame.forResponse(
             PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, Collections.emptyList(), errorMsg);
+    ByteBuf responseBuf = serverFrameCodec.encode(responseFrame);
+    return convertByteBufToByteArray(responseBuf);
+  }
+
+  public static byte[] result(int streamId) {
+    Result result = Void.INSTANCE;
+
+    Frame responseFrame =
+        Frame.forResponse(
+            PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, Collections.emptyList(), result);
     ByteBuf responseBuf = serverFrameCodec.encode(responseFrame);
     return convertByteBufToByteArray(responseBuf);
   }

@@ -26,6 +26,11 @@ import com.google.api.gax.rpc.HeaderProvider;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.NoCredentials;
+import com.google.cloud.spanner.DatabaseClient;
+import com.google.cloud.spanner.DatabaseId;
+import com.google.cloud.spanner.SessionPoolOptions;
+import com.google.cloud.spanner.Spanner;
+import com.google.cloud.spanner.SpannerOptions;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
@@ -71,6 +76,7 @@ final class Adapter {
   private ExecutorService executor;
   private boolean started = false;
   private AdapterOptions options;
+  DatabaseClient dbClient;
 
   /**
    * Constructor for the Adapter class, specifying a specific address to bind to.
@@ -143,6 +149,21 @@ final class Adapter {
               options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
       LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
 
+      SessionPoolOptions sessionPoolOptions =
+          SessionPoolOptions.newBuilder().setMinSessions(100).setMaxSessions(4000).build();
+      Spanner spanner =
+          SpannerOptions.newBuilder()
+              .setProjectId("span-cloud-testing")
+              .setNumChannels(options.getNumGrpcChannels())
+              .setSessionPoolOption(sessionPoolOptions)
+              .build()
+              .getService();
+      LOG.info("Using multiplexed sessions: " + sessionPoolOptions.getUseMultiplexedSession());
+
+      dbClient =
+          spanner.getDatabaseClient(
+              DatabaseId.of("span-cloud-testing", "c2sp-load-test", "xobni_derived_2"));
+
       executor = Executors.newCachedThreadPool();
       // Start accepting client connections.
       executor.execute(this::acceptClientConnections);
@@ -185,7 +206,8 @@ final class Adapter {
                 adapterClient,
                 sessionManager,
                 attachmentsCache,
-                options.getMaxCommitDelay()));
+                options.getMaxCommitDelay(),
+                dbClient));
         LOG.debug("Accepted client connection from: {}", socket.getRemoteSocketAddress());
       }
     } catch (SocketException e) {
