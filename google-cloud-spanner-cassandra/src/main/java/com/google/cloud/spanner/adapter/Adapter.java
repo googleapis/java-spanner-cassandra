@@ -26,6 +26,7 @@ import com.google.api.gax.rpc.HeaderProvider;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.NoCredentials;
+import com.google.cloud.spanner.adapter.util.ThreadFactoryUtil;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
@@ -143,7 +144,12 @@ final class Adapter {
               options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
       LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
 
-      executor = Executors.newCachedThreadPool();
+      executor = ThreadFactoryUtil.tryCreateVirtualThreadPerTaskExecutor("test-virtual-thread");
+      if (executor == null) {
+        executor = Executors.newCachedThreadPool();
+      } else {
+        LOG.info("*** Using virtual threads!!! ***");
+      }
       // Start accepting client connections.
       executor.execute(this::acceptClientConnections);
 
