@@ -102,5 +102,11 @@ public class Launcher {
         maxCommitDelayProperty);
 
     adapter.start();
+
+    try {
+      Thread.currentThread().join();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 }

@@ -15,6 +15,8 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
+import static com.google.cloud.spanner.adapter.util.ThreadFactoryUtil.tryCreateVirtualThreadPerTaskExecutor;
+
 import com.google.api.gax.core.CredentialsProvider;
 import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.core.GaxProperties;
@@ -91,13 +93,18 @@ final class Adapter {
       }
       final CredentialsProvider credentialsProvider = setUpCredentialsProvider(credentials);
 
+      executor = tryCreateVirtualThreadPerTaskExecutor("virtual-thread");
+      if (executor == null) {
+        executor = Executors.newCachedThreadPool();
+      }
+
       InstantiatingGrpcChannelProvider.Builder channelProviderBuilder =
           AdapterSettings.defaultGrpcTransportProviderBuilder();
 
       channelProviderBuilder
           .setAllowNonDefaultServiceAccount(true)
-          .setChannelPoolSettings(
-              ChannelPoolSettings.staticallySized(options.getNumGrpcChannels()));
+          .setChannelPoolSettings(ChannelPoolSettings.staticallySized(options.getNumGrpcChannels()))
+          .setExecutor(executor);
 
       if (isEnableDirectPathXdsEnv()) {
         channelProviderBuilder.setAttemptDirectPath(true);
@@ -139,8 +146,6 @@ final class Adapter {
           new ServerSocket(
               options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
       LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
-
-      executor = Executors.newCachedThreadPool();
 
       // Start accepting client connections.
       executor.execute(this::acceptClientConnections);
