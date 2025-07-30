@@ -59,6 +59,7 @@ public final class SpannerCqlSessionBuilder
   private Optional<Duration> maxCommitDelay = Optional.empty();
   private TransportChannelProvider channelProvider = null;
   private Credentials credentials;
+  private boolean useVirtualThreads;
 
   /**
    * Wraps the default CQL session with a SpannerCqlSession instance.
@@ -118,6 +119,16 @@ public final class SpannerCqlSessionBuilder
   /** Sets the GCP credentials for accessing Cloud Spanner. */
   public SpannerCqlSessionBuilder setGoogleCloudCredentials(Credentials credentials) {
     this.credentials = credentials;
+    return this;
+  }
+
+  /**
+   * (Optional, default `false`) Enables/disables the use of virtual threads for the gRPC executor.
+   * Setting this option only has any effect on Java 21 and higher. In all other cases, the option
+   * will be ignored.
+   */
+  protected SpannerCqlSessionBuilder setUseVirtualThreads(boolean useVirtualThreads) {
+    this.useVirtualThreads = useVirtualThreads;
     return this;
   }
 
@@ -232,6 +243,7 @@ public final class SpannerCqlSessionBuilder
             .numGrpcChannels(numGrpcChannels)
             .channelProvider(channelProvider)
             .credentials(credentials)
+            .useVirtualThreads(useVirtualThreads)
             .build();
 
     adapter = new Adapter(adapterOptions);

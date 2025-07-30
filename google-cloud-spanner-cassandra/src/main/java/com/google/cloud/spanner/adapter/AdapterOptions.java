@@ -37,6 +37,7 @@ class AdapterOptions {
     Optional<Duration> maxCommitDelay = Optional.empty();
     private TransportChannelProvider channelProvider = null;
     private Credentials credentials;
+    private boolean useVirtualThreads = false;
 
     /** The Cloud Spanner endpoint. */
     Builder spannerEndpoint(String spannerEndpoint) {
@@ -92,6 +93,12 @@ class AdapterOptions {
       return this;
     }
 
+    /** (Optional) Whether to use virtual threads (Java 21+ only) */
+    Builder useVirtualThreads(boolean useVirtualThreads) {
+      this.useVirtualThreads = useVirtualThreads;
+      return this;
+    }
+
     AdapterOptions build() {
       return new AdapterOptions(this);
     }
@@ -105,6 +112,7 @@ class AdapterOptions {
   private final Optional<Duration> maxCommitDelay;
   private TransportChannelProvider channelProvider;
   private Credentials credentials;
+  private boolean useVirtualThreads;
 
   private AdapterOptions(Builder builder) {
     this.spannerEndpoint = builder.spannerEndpoint;
@@ -115,6 +123,7 @@ class AdapterOptions {
     this.maxCommitDelay = builder.maxCommitDelay;
     this.channelProvider = builder.channelProvider;
     this.credentials = builder.credentials;
+    this.useVirtualThreads = builder.useVirtualThreads;
   }
 
   static Builder newBuilder() {
@@ -147,6 +156,10 @@ class AdapterOptions {
 
   Credentials getCredentials() {
     return credentials;
+  }
+
+  boolean getUseVirtualThreads() {
+    return useVirtualThreads;
   }
 
   Optional<Duration> getMaxCommitDelay() {

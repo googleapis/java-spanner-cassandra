@@ -67,7 +67,7 @@ final class Adapter extends AbstractApiService {
 
   private AdapterClientWrapper adapterClientWrapper;
   private ServerSocket serverSocket;
-  private ExecutorService executor;
+  private ExecutorService executor = null;
   private AdapterOptions options;
 
   /**
@@ -101,18 +101,18 @@ final class Adapter extends AbstractApiService {
       }
       final CredentialsProvider credentialsProvider = setUpCredentialsProvider(credentials);
 
-      executor = tryCreateVirtualThreadPerTaskExecutor("virtual-thread");
-      if (executor == null) {
-        executor = Executors.newCachedThreadPool();
-      }
-
       InstantiatingGrpcChannelProvider.Builder channelProviderBuilder =
           AdapterSettings.defaultGrpcTransportProviderBuilder();
 
+      if (options.getUseVirtualThreads()) {
+        executor = tryCreateVirtualThreadPerTaskExecutor("virtual-thread");
+        channelProviderBuilder.setExecutor(executor);
+      }
+
       channelProviderBuilder
           .setAllowNonDefaultServiceAccount(true)
-          .setChannelPoolSettings(ChannelPoolSettings.staticallySized(options.getNumGrpcChannels()))
-          .setExecutor(executor);
+          .setChannelPoolSettings(
+              ChannelPoolSettings.staticallySized(options.getNumGrpcChannels()));
 
       if (isEnableDirectPathXdsEnv()) {
         channelProviderBuilder.setAttemptDirectPath(true);
@@ -154,6 +154,10 @@ final class Adapter extends AbstractApiService {
           new ServerSocket(
               options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
       LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
+
+      if (executor == null) {
+        executor = Executors.newCachedThreadPool();
+      }
 
       // Start accepting client connections.
       executor.execute(this::acceptClientConnections);
