@@ -19,7 +19,6 @@ package com.google.cloud.spanner.adapter;
 import com.google.api.gax.rpc.ApiCallContext;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * An object used to encapsulate the result of preparing the Adapter payload prior to sending the
@@ -29,14 +28,14 @@ public class PreparePayloadResult {
   private ApiCallContext context;
   private int streamId;
   private Map<String, String> attachments;
-  private Optional<byte[]> attachmentErrorResponse;
+  private byte[] attachmentErrorResponse;
   private static final Map<String, String> EMPTY_ATTACHMENTS = Collections.emptyMap();
 
   public PreparePayloadResult(
       ApiCallContext context,
       int streamId,
       Map<String, String> attachments,
-      Optional<byte[]> attachmentErrorResponse) {
+      byte[] attachmentErrorResponse) {
     this.context = context;
     this.streamId = streamId;
     this.attachments = attachments;
@@ -45,18 +44,18 @@ public class PreparePayloadResult {
 
   public PreparePayloadResult(
       ApiCallContext context, int streamId, Map<String, String> attachments) {
-    this(context, streamId, attachments, Optional.empty());
+    this(context, streamId, attachments, null);
   }
 
   public PreparePayloadResult(ApiCallContext context, int streamId) {
-    this(context, streamId, EMPTY_ATTACHMENTS, Optional.empty());
+    this(context, streamId, EMPTY_ATTACHMENTS, null);
   }
 
   public Map<String, String> getAttachments() {
     return attachments;
   }
 
-  public Optional<byte[]> getAttachmentErrorResponse() {
+  public byte[] getAttachmentErrorResponse() {
     return attachmentErrorResponse;
   }
 
