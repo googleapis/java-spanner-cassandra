@@ -64,6 +64,7 @@ final class Adapter extends AbstractApiService {
           "https://www.googleapis.com/auth/spanner.data");
 
   private AdapterClientWrapper adapterClientWrapper;
+  private AdapterClient adapterClient;
   private ServerSocket serverSocket;
   private ExecutorService executor;
   private AdapterOptions options;
@@ -131,7 +132,7 @@ final class Adapter extends AbstractApiService {
               .setHeaderProvider(headerProvider)
               .build();
 
-      AdapterClient adapterClient = AdapterClient.create(settings);
+      adapterClient = AdapterClient.create(settings);
 
       AttachmentsCache attachmentsCache = new AttachmentsCache(MAX_GLOBAL_STATE_SIZE);
       SessionManager sessionManager = new SessionManager(adapterClient, options.getDatabaseUri());
@@ -163,6 +164,7 @@ final class Adapter extends AbstractApiService {
 
   protected void doStop() {
     executor.shutdownNow();
+    adapterClient.close();
     try {
       serverSocket.close();
     } catch (IOException e) {
