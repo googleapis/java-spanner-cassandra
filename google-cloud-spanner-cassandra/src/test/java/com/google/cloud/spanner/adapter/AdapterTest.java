@@ -16,8 +16,8 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
+import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
@@ -26,6 +26,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.api.core.AbstractApiService;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
@@ -85,8 +86,11 @@ public final class AdapterTest {
       ExecutorService mockExecutor = mock(ExecutorService.class);
       mockedExecutors.when(Executors::newCachedThreadPool).thenReturn(mockExecutor);
 
+      assertThat(adapter.state()).isEqualTo(AbstractApiService.State.NEW);
       adapter.start();
+      assertThat(adapter.state()).isEqualTo(AbstractApiService.State.RUNNING);
       adapter.stop();
+      assertThat(adapter.state()).isEqualTo(AbstractApiService.State.TERMINATED);
 
       verify(mockAdapterClient, times(1)).createSession(any(CreateSessionRequest.class));
       verify(mockExecutor).execute(any(Runnable.class));
@@ -97,11 +101,5 @@ public final class AdapterTest {
       // Verify ServerSocket was closed.
       verify(mockedServerSocketConstruction.constructed().get(0)).close();
     }
-  }
-
-  @Test
-  public void stopWithoutStart() {
-    // Adapter is in the not-started state.
-    assertThrows(IllegalStateException.class, adapter::stop);
   }
 }

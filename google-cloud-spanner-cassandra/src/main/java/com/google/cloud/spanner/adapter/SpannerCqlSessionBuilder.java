@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeoutException;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -234,6 +235,10 @@ public final class SpannerCqlSessionBuilder
             .build();
 
     adapter = new Adapter(adapterOptions);
-    adapter.start();
+    try {
+      adapter.start();
+    } catch (TimeoutException e) {
+      throw new RuntimeException("Adapter start timed out.", e);
+    }
   }
 }
