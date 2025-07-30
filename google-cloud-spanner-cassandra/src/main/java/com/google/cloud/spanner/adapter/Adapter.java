@@ -37,12 +37,12 @@ import java.net.Socket;
 import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import javax.annotation.concurrent.NotThreadSafe;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Manages client connections, acting as an intermediary for communication with Spanner. */
-@NotThreadSafe
 final class Adapter extends AbstractApiService {
   private static final Logger LOG = LoggerFactory.getLogger(Adapter.class);
   private static final String RESOURCE_PREFIX_HEADER_KEY = "google-cloud-resource-prefix";
@@ -78,6 +78,18 @@ final class Adapter extends AbstractApiService {
   }
 
   /** Starts the adapter, initializing the local TCP server and handling client connections. */
+  void start() throws TimeoutException {
+    startAsync().awaitRunning(30, TimeUnit.SECONDS);
+  }
+
+  /**
+   * Stops the adapter, shutting down the executor, closing the server socket, and closing the
+   * adapter client.
+   */
+  void stop() throws TimeoutException {
+    stopAsync().awaitTerminated(10, TimeUnit.SECONDS);
+  }
+
   @Override
   protected void doStart() {
     try {
@@ -149,10 +161,6 @@ final class Adapter extends AbstractApiService {
     }
   }
 
-  /**
-   * Stops the adapter, shutting down the executor, closing the server socket, and closing the
-   * adapter client.
-   */
   protected void doStop() {
     executor.shutdownNow();
     try {

@@ -87,9 +87,9 @@ public final class AdapterTest {
       mockedExecutors.when(Executors::newCachedThreadPool).thenReturn(mockExecutor);
 
       assertThat(adapter.state()).isEqualTo(AbstractApiService.State.NEW);
-      adapter.startAsync().awaitRunning();
+      adapter.start();
       assertThat(adapter.state()).isEqualTo(AbstractApiService.State.RUNNING);
-      adapter.stopAsync().awaitTerminated();
+      adapter.stop();
       assertThat(adapter.state()).isEqualTo(AbstractApiService.State.TERMINATED);
 
       verify(mockAdapterClient, times(1)).createSession(any(CreateSessionRequest.class));
