@@ -16,22 +16,9 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.net.Socket;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.ArgumentCaptor;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -49,13 +36,24 @@ import com.datastax.oss.protocol.internal.request.Prepare;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.datastax.oss.protocol.internal.request.query.QueryOptions;
 import com.google.api.gax.rpc.ApiCallContext;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
 import com.google.common.collect.ImmutableList;
-import static com.google.common.truth.Truth.assertThat;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 
 public final class DriverConnectionHandlerTest {
 

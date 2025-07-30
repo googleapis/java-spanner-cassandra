@@ -147,7 +147,10 @@ final class DriverConnectionHandler implements Runnable {
         } else {
           outputStream.write(
               adapterClientWrapper.sendGrpcRequest(
-                  ctx.payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId));
+                  ctx.payload,
+                  prepareResult.getAttachments(),
+                  prepareResult.getContext(),
+                  streamId));
           // Now response holds the gRPC result, which might still be empty.
         }
       } catch (RuntimeException e) {
@@ -239,7 +242,7 @@ final class DriverConnectionHandler implements Runnable {
   }
 
   private short load16BigEndian(byte[] bytes, int offset) {
-    return ByteBuffer.wrap(bytes, offset, 2).getShort();
+    return (short) (((bytes[offset] & 0xFF) << 8) | ((bytes[offset + 1] & 0xFF)));
   }
 
   private int load8Unsigned(byte[] bytes, int offset) {
