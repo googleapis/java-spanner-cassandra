@@ -70,7 +70,7 @@ final class DriverConnectionHandler implements Runnable {
 
   // These contexts are thread-safe and can be reused across all instances.
   private static final GrpcCallContext DEFAULT_CONTEXT = GrpcCallContext.createDefault();
-    private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
+  private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
   private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
       GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
@@ -142,8 +142,9 @@ final class DriverConnectionHandler implements Runnable {
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
         if (prepareResult.getAttachmentErrorResponse() != null) {
           outputStream.write(prepareResult.getAttachmentErrorResponse());
-        } else  {
-          outputStream.write(adapterClientWrapper.sendGrpcRequest(
+        } else {
+          outputStream.write(
+              adapterClientWrapper.sendGrpcRequest(
                   payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId));
           // Now response holds the gRPC result, which might still be empty.
         }
