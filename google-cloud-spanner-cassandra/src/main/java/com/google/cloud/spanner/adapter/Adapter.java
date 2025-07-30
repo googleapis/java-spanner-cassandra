@@ -166,7 +166,7 @@ final class Adapter extends AbstractApiService {
 
   private void acceptClientConnections() {
     try {
-      while (!Thread.currentThread().isInterrupted()) {
+      while (isRunning()) {
         final Socket socket = serverSocket.accept();
         // Optimize for latency (2), then bandwidth (1) and then connection time (0).
         socket.setPerformancePreferences(0, 2, 1);
