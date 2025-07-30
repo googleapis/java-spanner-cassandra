@@ -21,6 +21,7 @@ import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unprepared
 import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
 
 import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
+import com.datastax.oss.driver.shaded.guava.common.annotations.VisibleForTesting;
 import com.datastax.oss.protocol.internal.Compressor;
 import com.datastax.oss.protocol.internal.Frame;
 import com.datastax.oss.protocol.internal.FrameCodec;
@@ -65,11 +66,14 @@ final class DriverConnectionHandler implements Runnable {
   private final Socket socket;
   private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
-  private final GrpcCallContext defaultContext;
-  private final GrpcCallContext defaultContextWithLAR;
+  private static final int defaultStreamId = -1;
+
+  // These contexts are thread-safe and can be reused across all instances.
+  private static final GrpcCallContext DEFAULT_CONTEXT = GrpcCallContext.createDefault();
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
-  private static final int defaultStreamId = -1;
+  private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
+      GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -82,9 +86,6 @@ final class DriverConnectionHandler implements Runnable {
       Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
     this.socket = socket;
     this.adapterClientWrapper = adapterClientWrapper;
-    this.defaultContext = GrpcCallContext.createDefault();
-    this.defaultContextWithLAR =
-        GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
     if (maxCommitDelay.isPresent()) {
       this.maxCommitDelayMillis = Optional.of(String.valueOf(maxCommitDelay.get().toMillis()));
     } else {
@@ -92,6 +93,7 @@ final class DriverConnectionHandler implements Runnable {
     }
   }
 
+  @VisibleForTesting
   public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
     this(socket, adapterClientWrapper, Optional.empty());
   }
@@ -123,7 +125,6 @@ final class DriverConnectionHandler implements Runnable {
       throws IOException {
     // Keep processing until End-Of-Stream is reached on the input
     while (true) {
-      byte[] responseToWrite;
       int streamId = defaultStreamId; // Initialize with a default value.
       try {
         // 1. Read and construct the payload from the input stream
@@ -137,27 +138,25 @@ final class DriverConnectionHandler implements Runnable {
         // 3. Prepare the payload.
         PreparePayloadResult prepareResult = preparePayload(payload);
         streamId = prepareResult.getStreamId();
-        Optional<byte[]> response = prepareResult.getAttachmentErrorResponse();
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-        if (!response.isPresent()) {
-          responseToWrite =
-              adapterClientWrapper.sendGrpcRequest(
-                  payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId);
-          // Now response holds the gRPC result, which might still be empty.
+        if (prepareResult.getAttachmentErrorResponse().isPresent()) {
+          outputStream.write(prepareResult.getAttachmentErrorResponse().get());
         } else {
-          responseToWrite = response.get();
+          outputStream.write(
+              adapterClientWrapper.sendGrpcRequest(
+                  payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId));
+          // Now response holds the gRPC result, which might still be empty.
         }
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
         LOG.error("Error processing request: ", e);
-        responseToWrite =
+        outputStream.write(
             serverErrorResponse(
-                streamId, "Server error during request processing: " + e.getMessage());
+                streamId, "Server error during request processing: " + e.getMessage()));
       }
 
-      outputStream.write(responseToWrite);
       outputStream.flush();
     }
   }
@@ -174,23 +173,12 @@ final class DriverConnectionHandler implements Runnable {
     }
 
     int totalBytesRead = 0;
-    int bytesReadInCurrentLoop;
-
-    // Loop until the desired number of bytes are read or EOF is reached
     while (totalBytesRead < len) {
-      // Calculate how many bytes are still needed
-      int remaining = len - totalBytesRead;
-      // Calculate the current offset in the buffer
-      int currentOffset = off + totalBytesRead;
-
-      // Attempt to read the remaining bytes
-      bytesReadInCurrentLoop = in.read(b, currentOffset, remaining);
-
+      int bytesReadInCurrentLoop = in.read(b, off + totalBytesRead, len - totalBytesRead);
       if (bytesReadInCurrentLoop == -1) {
-        // End Of Stream (EOF) reached before 'len' bytes were read.
+        // EOF reached before 'len' bytes were read.
         break;
       }
-
       totalBytesRead += bytesReadInCurrentLoop;
     }
 
@@ -202,28 +190,23 @@ final class DriverConnectionHandler implements Runnable {
     byte[] header = new byte[HEADER_LENGTH];
     int bytesRead = readNBytesJava8(socketInputStream, header, 0, HEADER_LENGTH);
     if (bytesRead == 0) {
-      // EOF
-      return new byte[0];
+      return new byte[0]; // EOF
     } else if (bytesRead < HEADER_LENGTH) {
       throw new IllegalArgumentException("Payload is not well formed.");
     }
 
     // Extract the body length from the header.
     int bodyLength = load32BigEndian(header, 5);
-
     if (bodyLength < 0) {
       throw new IllegalArgumentException("Payload is not well formed.");
     }
 
-    byte[] body = new byte[bodyLength];
-    if (readNBytesJava8(socketInputStream, body, 0, bodyLength) < bodyLength) {
-      throw new IllegalArgumentException("Payload is not well formed.");
-    }
-
-    // Combine the header and body into the payload.
     byte[] payload = new byte[HEADER_LENGTH + bodyLength];
     System.arraycopy(header, 0, payload, 0, HEADER_LENGTH);
-    System.arraycopy(body, 0, payload, HEADER_LENGTH, bodyLength);
+    if (bodyLength > 0
+        && readNBytesJava8(socketInputStream, payload, HEADER_LENGTH, bodyLength) < bodyLength) {
+      throw new IllegalArgumentException("Payload is not well formed.");
+    }
 
     return payload;
   }
@@ -250,39 +233,37 @@ final class DriverConnectionHandler implements Runnable {
     Frame frame = serverFrameCodec.decode(payloadBuf);
     payloadBuf.release();
 
-    Map<String, String> attachments = new HashMap<>();
     if (frame.message instanceof Execute) {
-      return prepareExecuteMessage((Execute) frame.message, frame.streamId, attachments);
+      return prepareExecuteMessage((Execute) frame.message, frame.streamId);
     } else if (frame.message instanceof Batch) {
-      return prepareBatchMessage((Batch) frame.message, frame.streamId, attachments);
+      return prepareBatchMessage((Batch) frame.message, frame.streamId);
     } else if (frame.message instanceof Query) {
-      return prepareQueryMessage((Query) frame.message, frame.streamId, attachments);
+      return prepareQueryMessage((Query) frame.message, frame.streamId);
     } else {
-      return new PreparePayloadResult(defaultContext, frame.streamId);
+      return new PreparePayloadResult(DEFAULT_CONTEXT, frame.streamId);
     }
   }
 
-  private PreparePayloadResult prepareExecuteMessage(
-      Execute message, int streamId, Map<String, String> attachments) {
+  private PreparePayloadResult prepareExecuteMessage(Execute message, int streamId) {
     ApiCallContext context;
+    Map<String, String> attachments = new HashMap<>();
     if (message.queryId != null
         && message.queryId.length > 0
         && message.queryId[0] == WRITE_ACTION_QUERY_ID_PREFIX) {
-      context = defaultContextWithLAR;
-      if (maxCommitDelayMillis.isPresent()) {
-        attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
-      }
+      context = DEFAULT_CONTEXT_WITH_LAR;
+      maxCommitDelayMillis.ifPresent(
+          delay -> attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, delay));
     } else {
-      context = defaultContext;
+      context = DEFAULT_CONTEXT;
     }
     Optional<byte[]> errorResponse =
         prepareAttachmentForQueryId(streamId, attachments, message.queryId);
     return new PreparePayloadResult(context, streamId, attachments, errorResponse);
   }
 
-  private PreparePayloadResult prepareBatchMessage(
-      Batch message, int streamId, Map<String, String> attachments) {
+  private PreparePayloadResult prepareBatchMessage(Batch message, int streamId) {
     Optional<byte[]> attachmentErrorResponse = Optional.empty();
+    Map<String, String> attachments = new HashMap<>();
     for (Object obj : message.queriesOrIds) {
       if (obj instanceof byte[]) {
         Optional<byte[]> errorResponse =
@@ -293,21 +274,22 @@ final class DriverConnectionHandler implements Runnable {
         }
       }
     }
-    if (maxCommitDelayMillis.isPresent()) {
-      attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
-    }
+    maxCommitDelayMillis.ifPresent(
+        delay -> attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, delay));
+    // No error, return with populated attachments.
     return new PreparePayloadResult(
-        defaultContextWithLAR, streamId, attachments, attachmentErrorResponse);
+        DEFAULT_CONTEXT_WITH_LAR, streamId, attachments, attachmentErrorResponse);
   }
 
-  private PreparePayloadResult prepareQueryMessage(
-      Query message, int streamId, Map<String, String> attachments) {
+  private PreparePayloadResult prepareQueryMessage(Query message, int streamId) {
     ApiCallContext context;
+    Map<String, String> attachments = Collections.emptyMap();
     if (startsWith(message.query, "SELECT")) {
-      context = defaultContext;
+      context = DEFAULT_CONTEXT;
     } else {
-      context = defaultContextWithLAR;
+      context = DEFAULT_CONTEXT_WITH_LAR;
       if (maxCommitDelayMillis.isPresent()) {
+        attachments = new HashMap<>();
         attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
       }
     }
