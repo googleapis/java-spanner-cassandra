@@ -101,6 +101,6 @@ public class Launcher {
         numGrpcChannels,
         maxCommitDelayProperty);
 
-    adapter.start();
+    adapter.startAsync().awaitRunning();
   }
 }
