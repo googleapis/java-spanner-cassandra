@@ -15,7 +15,6 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
-import com.google.api.core.AbstractApiService;
 import com.google.api.gax.core.CredentialsProvider;
 import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.core.GaxProperties;
@@ -34,16 +33,17 @@ import com.google.spanner.adapter.v1.AdapterSettings;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import javax.annotation.concurrent.NotThreadSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Manages client connections, acting as an intermediary for communication with Spanner. */
-final class Adapter extends AbstractApiService {
+@NotThreadSafe
+final class Adapter {
   private static final Logger LOG = LoggerFactory.getLogger(Adapter.class);
   private static final String RESOURCE_PREFIX_HEADER_KEY = "google-cloud-resource-prefix";
   private static final long MAX_GLOBAL_STATE_SIZE = (long) (1e8 / 256); // ~100 MB
@@ -66,6 +66,7 @@ final class Adapter extends AbstractApiService {
   private AdapterClientWrapper adapterClientWrapper;
   private ServerSocket serverSocket;
   private ExecutorService executor;
+  private boolean started = false;
   private AdapterOptions options;
 
   /**
@@ -78,20 +79,11 @@ final class Adapter extends AbstractApiService {
   }
 
   /** Starts the adapter, initializing the local TCP server and handling client connections. */
-  void start() throws TimeoutException {
-    startAsync().awaitRunning(30, TimeUnit.SECONDS);
-  }
+  void start() {
+    if (started) {
+      return;
+    }
 
-  /**
-   * Stops the adapter, shutting down the executor, closing the server socket, and closing the
-   * adapter client.
-   */
-  void stop() throws TimeoutException {
-    stopAsync().awaitTerminated(10, TimeUnit.SECONDS);
-  }
-
-  @Override
-  protected void doStart() {
     try {
       Credentials credentials = options.getCredentials();
       if (credentials == null) {
@@ -153,28 +145,32 @@ final class Adapter extends AbstractApiService {
       // Start accepting client connections.
       executor.execute(this::acceptClientConnections);
 
-      notifyStarted();
+      started = true;
       LOG.info("Adapter started for database '{}'.", options.getDatabaseUri());
+
     } catch (IOException | RuntimeException e) {
-      LOG.error("Error while starting Adapter", e);
-      notifyFailed(e);
+      throw new AdapterStartException(e);
     }
   }
 
-  protected void doStop() {
-    executor.shutdownNow();
-    try {
-      serverSocket.close();
-    } catch (IOException e) {
-      LOG.warn("Error while closing server socket: {}", e.getMessage());
+  /**
+   * Stops the adapter, shutting down the executor, closing the server socket, and closing the
+   * adapter client.
+   *
+   * @throws IOException If an I/O error occurs while closing the server socket.
+   */
+  void stop() throws IOException {
+    if (!started) {
+      throw new IllegalStateException("Adapter was never started!");
     }
-    notifyStopped();
+    executor.shutdownNow();
+    serverSocket.close();
     LOG.info("Adapter stopped.");
   }
 
   private void acceptClientConnections() {
     try {
-      while (isRunning()) {
+      while (!Thread.currentThread().isInterrupted()) {
         final Socket socket = serverSocket.accept();
         // Optimize for latency (2), then bandwidth (1) and then connection time (0).
         socket.setPerformancePreferences(0, 2, 1);
@@ -184,11 +180,12 @@ final class Adapter extends AbstractApiService {
             new DriverConnectionHandler(socket, adapterClientWrapper, options.getMaxCommitDelay()));
         LOG.debug("Accepted client connection from: {}", socket.getRemoteSocketAddress());
       }
-    } catch (IOException e) {
+    } catch (SocketException e) {
       if (!serverSocket.isClosed()) {
         LOG.error("Error accepting client connection", e);
-        notifyFailed(e);
       }
+    } catch (IOException e) {
+      LOG.error("Error accepting client connection", e);
     }
   }
 
@@ -211,5 +208,11 @@ final class Adapter extends AbstractApiService {
 
   private static boolean isEnableDirectPathXdsEnv() {
     return Boolean.parseBoolean(System.getenv(ENV_VAR_GOOGLE_SPANNER_ENABLE_DIRECT_ACCESS));
+  }
+
+  private static final class AdapterStartException extends RuntimeException {
+    public AdapterStartException(Throwable cause) {
+      super("Failed to start the adapter.", cause);
+    }
   }
 }
