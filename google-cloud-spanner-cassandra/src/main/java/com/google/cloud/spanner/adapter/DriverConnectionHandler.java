@@ -140,8 +140,8 @@ final class DriverConnectionHandler implements Runnable {
         streamId = prepareResult.getStreamId();
 
         // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-        if (prepareResult.getAttachmentErrorResponse() != null) {
-          outputStream.write(prepareResult.getAttachmentErrorResponse());
+        if (prepareResult.getAttachmentErrorResponse().isPresent()) {
+          outputStream.write(prepareResult.getAttachmentErrorResponse().get());
         } else {
           outputStream.write(
               adapterClientWrapper.sendGrpcRequest(
@@ -256,26 +256,29 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       context = DEFAULT_CONTEXT;
     }
-    byte[] errorResponse = prepareAttachmentForQueryId(streamId, attachments, message.queryId);
+    Optional<byte[]> errorResponse =
+        prepareAttachmentForQueryId(streamId, attachments, message.queryId);
     return new PreparePayloadResult(context, streamId, attachments, errorResponse);
   }
 
   private PreparePayloadResult prepareBatchMessage(Batch message, int streamId) {
+    Optional<byte[]> attachmentErrorResponse = Optional.empty();
     Map<String, String> attachments = new HashMap<>();
     for (Object obj : message.queriesOrIds) {
       if (obj instanceof byte[]) {
-        byte[] errorResponse = prepareAttachmentForQueryId(streamId, attachments, (byte[]) obj);
-        if (errorResponse != null) {
-          // Return immediately on the first unprepared statement.
-          return new PreparePayloadResult(
-              DEFAULT_CONTEXT_WITH_LAR, streamId, attachments, errorResponse);
+        Optional<byte[]> errorResponse =
+            prepareAttachmentForQueryId(streamId, attachments, (byte[]) obj);
+        if (errorResponse.isPresent()) {
+          attachmentErrorResponse = errorResponse;
+          break;
         }
       }
     }
     maxCommitDelayMillis.ifPresent(
         delay -> attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, delay));
     // No error, return with populated attachments.
-    return new PreparePayloadResult(DEFAULT_CONTEXT_WITH_LAR, streamId, attachments, null);
+    return new PreparePayloadResult(
+        DEFAULT_CONTEXT_WITH_LAR, streamId, attachments, attachmentErrorResponse);
   }
 
   private PreparePayloadResult prepareQueryMessage(Query message, int streamId) {
@@ -293,15 +296,15 @@ final class DriverConnectionHandler implements Runnable {
     return new PreparePayloadResult(context, streamId, attachments);
   }
 
-  private byte[] prepareAttachmentForQueryId(
+  private Optional<byte[]> prepareAttachmentForQueryId(
       int streamId, Map<String, String> attachments, byte[] queryId) {
     String key = constructKey(queryId);
     Optional<String> val = adapterClientWrapper.getAttachmentsCache().get(key);
     if (!val.isPresent()) {
-      return unpreparedResponse(streamId, queryId);
+      return Optional.of(unpreparedResponse(streamId, queryId));
     }
     attachments.put(key, val.get());
-    return null;
+    return Optional.empty();
   }
 
   private static String constructKey(byte[] queryId) {
