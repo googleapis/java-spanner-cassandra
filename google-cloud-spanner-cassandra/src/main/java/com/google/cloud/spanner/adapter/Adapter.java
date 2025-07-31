@@ -140,7 +140,8 @@ final class Adapter {
       sessionManager.getSession();
 
       adapterClientWrapper =
-          new AdapterClientWrapper(adapterClient, attachmentsCache, sessionManager);
+          new AdapterClientWrapper(
+              adapterClient, attachmentsCache, sessionManager, options.getMetricsRecorder());
 
       // Start listening on the specified host and port.
       serverSocket =

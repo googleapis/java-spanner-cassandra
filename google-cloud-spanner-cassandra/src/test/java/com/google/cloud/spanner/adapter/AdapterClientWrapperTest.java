@@ -27,6 +27,7 @@ import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.api.gax.rpc.ServerStream;
 import com.google.api.gax.rpc.ServerStreamingCallable;
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
 import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageRequest;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
@@ -49,6 +50,7 @@ public final class AdapterClientWrapperTest {
   private final ServerStreamingCallable<AdaptMessageRequest, AdaptMessageResponse> mockCallable =
       mock(ServerStreamingCallable.class);
   private final SessionManager mockSessionManager = mock(SessionManager.class);
+  private final BuiltInMetricsRecorder mockMetricsRecorder = mock(BuiltInMetricsRecorder.class);
   private final ApiCallContext context = GrpcCallContext.createDefault();
 
   private AdapterClientWrapper adapterClientWrapper;
@@ -64,7 +66,8 @@ public final class AdapterClientWrapperTest {
     when(mockSessionManager.getSession()).thenReturn(mockSession);
     when(mockSession.getName()).thenReturn("test-session");
     adapterClientWrapper =
-        new AdapterClientWrapper(mockAdapterClient, attachmentsCache, mockSessionManager);
+        new AdapterClientWrapper(
+            mockAdapterClient, attachmentsCache, mockSessionManager, mockMetricsRecorder);
   }
 
   @Test

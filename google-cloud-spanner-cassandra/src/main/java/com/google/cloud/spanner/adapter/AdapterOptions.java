@@ -17,6 +17,7 @@ package com.google.cloud.spanner.adapter;
 
 import com.google.api.gax.rpc.TransportChannelProvider;
 import com.google.auth.Credentials;
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
 import java.net.InetAddress;
 import java.time.Duration;
 import java.util.Optional;
@@ -37,6 +38,7 @@ class AdapterOptions {
     Optional<Duration> maxCommitDelay = Optional.empty();
     private TransportChannelProvider channelProvider = null;
     private Credentials credentials;
+    private BuiltInMetricsRecorder metricsRecorder;
     private boolean useVirtualThreads = false;
 
     /** The Cloud Spanner endpoint. */
@@ -93,6 +95,11 @@ class AdapterOptions {
       return this;
     }
 
+    Builder metricsRecorder(BuiltInMetricsRecorder metricsRecorder) {
+      this.metricsRecorder = metricsRecorder;
+      return this;
+    }
+
     /** (Optional) Whether to use virtual threads (Java 21+ only) */
     Builder useVirtualThreads(boolean useVirtualThreads) {
       this.useVirtualThreads = useVirtualThreads;
@@ -112,6 +119,7 @@ class AdapterOptions {
   private final Optional<Duration> maxCommitDelay;
   private TransportChannelProvider channelProvider;
   private Credentials credentials;
+  private BuiltInMetricsRecorder metricsRecorder;
   private boolean useVirtualThreads;
 
   private AdapterOptions(Builder builder) {
@@ -123,6 +131,7 @@ class AdapterOptions {
     this.maxCommitDelay = builder.maxCommitDelay;
     this.channelProvider = builder.channelProvider;
     this.credentials = builder.credentials;
+    this.metricsRecorder = builder.metricsRecorder;
     this.useVirtualThreads = builder.useVirtualThreads;
   }
 
@@ -164,5 +173,9 @@ class AdapterOptions {
 
   Optional<Duration> getMaxCommitDelay() {
     return maxCommitDelay;
+  }
+
+  BuiltInMetricsRecorder getMetricsRecorder() {
+    return metricsRecorder;
   }
 }
