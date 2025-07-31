@@ -16,6 +16,10 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
+import com.google.spanner.adapter.v1.DatabaseName;
+import io.opentelemetry.api.OpenTelemetry;
 import java.net.InetAddress;
 import java.time.Duration;
 import org.slf4j.Logger;
@@ -56,6 +60,8 @@ import org.slf4j.LoggerFactory;
  */
 public class Launcher {
   private static final Logger LOG = LoggerFactory.getLogger(Launcher.class);
+  private static final BuiltInMetricsProvider builtInMetricsProvider =
+      BuiltInMetricsProvider.INSTANCE;
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
   private static final String DATABASE_URI_PROP_KEY = "databaseUri";
   private static final String HOST_PROP_KEY = "host";
@@ -65,6 +71,7 @@ public class Launcher {
   private static final String DEFAULT_PORT = "9042";
   private static final String DEFAULT_NUM_GRPC_CHANNELS = "4";
   private static final String MAX_COMMIT_DELAY_PROP_KEY = "maxCommitDelayMillis";
+  private static final String ENABLE_BUILTIN_METRICS_PROP_KEY = "enableBuiltInMetrics";
 
   public static void main(String[] args) throws Exception {
     final String databaseUri = System.getProperty(DATABASE_URI_PROP_KEY);
@@ -74,11 +81,24 @@ public class Launcher {
     final int numGrpcChannels =
         Integer.parseInt(System.getProperty(NUM_GRPC_CHANNELS_PROP_KEY, DEFAULT_NUM_GRPC_CHANNELS));
     final String maxCommitDelayProperty = System.getProperty(MAX_COMMIT_DELAY_PROP_KEY);
+    final boolean enableBuiltInMetrics =
+        Boolean.parseBoolean(System.getProperty(ENABLE_BUILTIN_METRICS_PROP_KEY, "false"));
 
     if (databaseUri == null) {
       throw new IllegalArgumentException(
           "Spanner database URI not set. Please set it using -DdatabaseUri option.");
     }
+
+    DatabaseName databaseName = DatabaseName.parse(databaseUri);
+    OpenTelemetry openTelemetry =
+        enableBuiltInMetrics
+            ? builtInMetricsProvider.getOrCreateOpenTelemetry(
+                databaseName.getProject(), databaseName.getInstance())
+            : OpenTelemetry.noop();
+    BuiltInMetricsRecorder metricsRecorder =
+        new BuiltInMetricsRecorder(
+            openTelemetry,
+            builtInMetricsProvider.createDefaultAttributes(databaseName.getDatabase()));
 
     AdapterOptions.Builder opBuilder =
         new AdapterOptions.Builder()
@@ -86,7 +106,8 @@ public class Launcher {
             .tcpPort(port)
             .databaseUri(databaseUri)
             .inetAddress(inetAddress)
-            .numGrpcChannels(numGrpcChannels);
+            .numGrpcChannels(numGrpcChannels)
+            .metricsRecorder(metricsRecorder);
     if (maxCommitDelayProperty != null) {
       opBuilder.maxCommitDelay(Duration.ofMillis(Integer.parseInt(maxCommitDelayProperty)));
     }
@@ -94,12 +115,13 @@ public class Launcher {
     Adapter adapter = new Adapter(opBuilder.build());
     LOG.info(
         "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels and max commit"
-            + " delay of {}...",
+            + " delay of {} and built-in metrics enabled: {}",
         databaseUri,
         inetAddress,
         port,
         numGrpcChannels,
-        maxCommitDelayProperty);
+        maxCommitDelayProperty,
+        enableBuiltInMetrics);
 
     adapter.start();
   }

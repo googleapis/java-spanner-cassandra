@@ -21,6 +21,10 @@ import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.session.SessionBuilder;
 import com.google.api.gax.rpc.TransportChannelProvider;
 import com.google.auth.Credentials;
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
+import com.google.spanner.adapter.v1.DatabaseName;
+import io.opentelemetry.api.OpenTelemetry;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -43,6 +47,7 @@ import org.slf4j.LoggerFactory;
 public final class SpannerCqlSessionBuilder
     extends SessionBuilder<SpannerCqlSessionBuilder, SpannerCqlSession> {
   private static final Logger LOG = LoggerFactory.getLogger(SpannerCqlSessionBuilder.class);
+  private final BuiltInMetricsProvider builtInMetricsProvider = BuiltInMetricsProvider.INSTANCE;
   private static final int DEFAULT_PORT = 9042;
   private static final String DEFAULT_HOST = "0.0.0.0";
   private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
@@ -57,6 +62,7 @@ public final class SpannerCqlSessionBuilder
   private String databaseUri = null;
   private String host = null;
   private Optional<Duration> maxCommitDelay = Optional.empty();
+  private boolean enableBuiltInMetrics = false;
   private TransportChannelProvider channelProvider = null;
   private Credentials credentials;
 
@@ -106,6 +112,14 @@ public final class SpannerCqlSessionBuilder
    */
   public SpannerCqlSessionBuilder setMaxCommitDelay(Duration maxCommitDelay) {
     this.maxCommitDelay = Optional.of(maxCommitDelay);
+    return this;
+  }
+
+  /**
+   * Sets whether to enable or disable built in metrics. Built in metrics are disabled by default.
+   */
+  public SpannerCqlSessionBuilder setBuiltInMetricsEnabled(boolean enableBuiltInMetrics) {
+    this.enableBuiltInMetrics = enableBuiltInMetrics;
     return this;
   }
 
@@ -223,6 +237,17 @@ public final class SpannerCqlSessionBuilder
 
   private void createAndStartAdapter() {
 
+    DatabaseName databaseName = DatabaseName.parse(databaseUri);
+    OpenTelemetry openTelemetry =
+        enableBuiltInMetrics
+            ? builtInMetricsProvider.getOrCreateOpenTelemetry(
+                databaseName.getProject(), databaseName.getInstance())
+            : OpenTelemetry.noop();
+    BuiltInMetricsRecorder metricsRecorder =
+        new BuiltInMetricsRecorder(
+            openTelemetry,
+            builtInMetricsProvider.createDefaultAttributes(databaseName.getDatabase()));
+
     AdapterOptions adapterOptions =
         AdapterOptions.newBuilder()
             .spannerEndpoint(host)
@@ -232,8 +257,9 @@ public final class SpannerCqlSessionBuilder
             .numGrpcChannels(numGrpcChannels)
             .channelProvider(channelProvider)
             .credentials(credentials)
+            .maxCommitDelay(maxCommitDelay.orElse(null))
+            .metricsRecorder(metricsRecorder)
             .build();
-
     adapter = new Adapter(adapterOptions);
     try {
       adapter.start();

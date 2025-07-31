@@ -17,6 +17,7 @@ package com.google.cloud.spanner.adapter;
 
 import com.google.api.gax.rpc.TransportChannelProvider;
 import com.google.auth.Credentials;
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
 import java.net.InetAddress;
 import java.time.Duration;
 import java.util.Optional;
@@ -37,6 +38,7 @@ class AdapterOptions {
     Optional<Duration> maxCommitDelay = Optional.empty();
     private TransportChannelProvider channelProvider = null;
     private Credentials credentials;
+    private BuiltInMetricsRecorder metricsRecorder;
 
     /** The Cloud Spanner endpoint. */
     Builder spannerEndpoint(String spannerEndpoint) {
@@ -92,6 +94,11 @@ class AdapterOptions {
       return this;
     }
 
+    Builder metricsRecorder(BuiltInMetricsRecorder metricsRecorder) {
+      this.metricsRecorder = metricsRecorder;
+      return this;
+    }
+
     AdapterOptions build() {
       return new AdapterOptions(this);
     }
@@ -105,6 +112,7 @@ class AdapterOptions {
   private final Optional<Duration> maxCommitDelay;
   private TransportChannelProvider channelProvider;
   private Credentials credentials;
+  private BuiltInMetricsRecorder metricsRecorder;
 
   private AdapterOptions(Builder builder) {
     this.spannerEndpoint = builder.spannerEndpoint;
@@ -115,6 +123,7 @@ class AdapterOptions {
     this.maxCommitDelay = builder.maxCommitDelay;
     this.channelProvider = builder.channelProvider;
     this.credentials = builder.credentials;
+    this.metricsRecorder = builder.metricsRecorder;
   }
 
   static Builder newBuilder() {
@@ -151,5 +160,9 @@ class AdapterOptions {
 
   Optional<Duration> getMaxCommitDelay() {
     return maxCommitDelay;
+  }
+
+  BuiltInMetricsRecorder getMetricsRecorder() {
+    return metricsRecorder;
   }
 }

@@ -43,6 +43,7 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -60,6 +61,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
+  private static final String ADAPT_MESSAGE_METHOD = "Adapter.AdaptMessage";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
@@ -72,6 +74,8 @@ final class DriverConnectionHandler implements Runnable {
   private static final GrpcCallContext DEFAULT_CONTEXT = GrpcCallContext.createDefault();
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
+  private static final Map<String, String> SUCCESS_METRIC_ATTRIBUTES =
+      ImmutableMap.of("method", ADAPT_MESSAGE_METHOD, "status", "OK");
   private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
       GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
 
@@ -126,10 +130,12 @@ final class DriverConnectionHandler implements Runnable {
     // Keep processing until End-Of-Stream is reached on the input
     while (true) {
       int streamId = defaultStreamId; // Initialize with a default value.
+      Instant startTime = null;
       try {
         // 1. Read and construct the payload from the input stream
         byte[] payload = constructPayload(inputStream);
 
+        startTime = Instant.now();
         // 2. Check for EOF signaled by an empty payload
         if (payload.length == 0) {
           break; // Break out of the loop gracefully in case of EOF
@@ -146,8 +152,10 @@ final class DriverConnectionHandler implements Runnable {
           outputStream.write(
               adapterClientWrapper.sendGrpcRequest(
                   payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId));
-          // Now response holds the gRPC result, which might still be empty.
         }
+        outputStream.flush();
+        long d = Duration.between(startTime, Instant.now()).toMillis();
+        adapterClientWrapper.recordMetrics(d, SUCCESS_METRIC_ATTRIBUTES);
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
@@ -155,9 +163,8 @@ final class DriverConnectionHandler implements Runnable {
         outputStream.write(
             serverErrorResponse(
                 streamId, "Server error during request processing: " + e.getMessage()));
+        outputStream.flush();
       }
-
-      outputStream.flush();
     }
   }
 
