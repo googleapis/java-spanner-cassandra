@@ -66,6 +66,7 @@ final class Adapter {
           "https://www.googleapis.com/auth/spanner.data");
 
   private AdapterClientWrapper adapterClientWrapper;
+  private AdapterClient adapterClient;
   private ServerSocket serverSocket;
   private ExecutorService executor;
   private boolean started = false;
@@ -130,7 +131,7 @@ final class Adapter {
               .setHeaderProvider(headerProvider)
               .build();
 
-      AdapterClient adapterClient = AdapterClient.create(settings);
+      adapterClient = AdapterClient.create(settings);
 
       AttachmentsCache attachmentsCache = new AttachmentsCache(MAX_GLOBAL_STATE_SIZE);
       SessionManager sessionManager = new SessionManager(adapterClient, options.getDatabaseUri());
@@ -173,6 +174,7 @@ final class Adapter {
       throw new IllegalStateException("Adapter was never started!");
     }
     executor.shutdownNow();
+    adapterClient.close();
     serverSocket.close();
     LOG.info("Adapter stopped.");
   }

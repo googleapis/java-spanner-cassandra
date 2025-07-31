@@ -89,11 +89,11 @@ public final class AdapterClientWrapperTest {
             .build();
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
 
-    byte[] response =
+    ByteString response =
         adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context, streamId);
 
     verify(mockCallable).call(expectedRequest, context);
-    assertThat(response).isEqualTo("test response".getBytes());
+    assertThat(response).isEqualTo(ByteString.copyFromUtf8("test response"));
     assertThat(attachmentsCache.get("k1")).hasValue("v1");
     assertThat(attachmentsCache.get("k2")).hasValue("v2");
   }
@@ -131,11 +131,12 @@ public final class AdapterClientWrapperTest {
             .setPayload(ByteString.copyFrom(payload))
             .build();
 
-    byte[] response =
+    ByteString response =
         adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context, streamId);
 
     verify(mockCallable).call(expectedRequest, context);
-    assertThat(response).isEqualTo("test header test response 1 test response 2".getBytes());
+    assertThat(response)
+        .isEqualTo(ByteString.copyFromUtf8("test header test response 1 test response 2"));
     assertThat(attachmentsCache.get("k1")).hasValue("v1");
     assertThat(attachmentsCache.get("k2")).hasValue("v2");
     assertThat(attachmentsCache.get("k3")).hasValue("v3");
@@ -155,7 +156,7 @@ public final class AdapterClientWrapperTest {
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
     when(mockSession.getName()).thenReturn("test-session");
 
-    byte[] response =
+    ByteString response =
         adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context, streamId);
 
     verify(mockCallable).call(expectedRequest, context);
