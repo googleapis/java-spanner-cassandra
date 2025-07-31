@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.1](https://github.com/googleapis/java-spanner-cassandra/compare/v0.4.0...v0.4.1) (2025-07-31)
+
+
+### Bug Fixes
+
+* Add missing setting for direct path enablement ([#145](https://github.com/googleapis/java-spanner-cassandra/issues/145)) ([5099d98](https://github.com/googleapis/java-spanner-cassandra/commit/5099d9893dbe160de15e09d35cc95be2839ecc71))
+* Attach appropriate stream_id for error response ([#149](https://github.com/googleapis/java-spanner-cassandra/issues/149)) ([54ba573](https://github.com/googleapis/java-spanner-cassandra/commit/54ba57305d659d52f007e0ce602ca9a5a3031ebc))
+* Correct method name ([#127](https://github.com/googleapis/java-spanner-cassandra/issues/127)) ([0a5fa64](https://github.com/googleapis/java-spanner-cassandra/commit/0a5fa64f9b172db49c126bce33246dee38df848c))
+
+
+### Performance Improvements
+
+* Add support for virtual threads ([#169](https://github.com/googleapis/java-spanner-cassandra/issues/169)) ([393ae0a](https://github.com/googleapis/java-spanner-cassandra/commit/393ae0a1a80c4790cddc1be6d265f4fd95960da6))
+* Directly write ByteString received from gRPC response to socket to avoid copies ([#174](https://github.com/googleapis/java-spanner-cassandra/issues/174)) ([8d5a2b7](https://github.com/googleapis/java-spanner-cassandra/commit/8d5a2b7f14b8f6c27dbfc53fecab25644f7857be))
+* Only decode bytes to frame for query, execute and batch messages ([#163](https://github.com/googleapis/java-spanner-cassandra/issues/163)) ([b0f279d](https://github.com/googleapis/java-spanner-cassandra/commit/b0f279d9b89c86e29210ff192b3ef85be9f0feba))
+
+
+### Documentation
+
+* Add YCSB doc ([#173](https://github.com/googleapis/java-spanner-cassandra/issues/173)) ([e2703b4](https://github.com/googleapis/java-spanner-cassandra/commit/e2703b47f7ec22c7e1c6fe5003496f633210bf5f))
+
 ## [0.4.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.3.0...v0.4.0) (2025-06-29)
 
 
