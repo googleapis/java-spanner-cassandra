@@ -21,6 +21,7 @@ import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.internal.core.metadata.DefaultEndPoint;
+import com.google.cloud.spanner.adapter.SpannerCqlRetryPolicy;
 import com.google.cloud.spanner.adapter.SpannerCqlSession;
 import com.google.cloud.spanner.admin.database.v1.DatabaseAdminClient;
 import com.google.cloud.spanner.admin.database.v1.DatabaseAdminSettings;
@@ -117,6 +118,7 @@ public class SpannerContext extends DatabaseContext {
             .withConfigLoader(
                 DriverConfigLoader.programmaticBuilder()
                     .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
+                    .withClass(DefaultDriverOption.RETRY_POLICY_CLASS, SpannerCqlRetryPolicy.class)
                     .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofMinutes(5))
                     .withDuration(
                         DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofMinutes(5))
