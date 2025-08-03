@@ -18,6 +18,11 @@ package com.google.cloud.spanner.adapter;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import com.google.cloud.spanner.adapter.AttachmentsCache.CacheValue;
+import com.google.common.collect.ImmutableMap;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.Test;
 
@@ -27,38 +32,53 @@ public final class AttachmentsCacheTest {
 
   @Test
   public void putAndGet() {
-    AttachmentsCache AttachmentsCache = new AttachmentsCache(100);
-    AttachmentsCache.put("key1", "value1");
+    AttachmentsCache attachmentsCache = new AttachmentsCache(100);
+    ByteBuffer key1 = ByteBuffer.wrap("key1".getBytes(StandardCharsets.UTF_8));
+    Map<String, String> attachments = ImmutableMap.of("a", "b");
+    CacheValue value1 = new CacheValue(attachments, true);
+    attachmentsCache.put(key1, value1);
 
-    Optional<String> value1 = AttachmentsCache.get("key1");
+    Optional<CacheValue> retrievedValue = attachmentsCache.get(key1);
 
-    assertThat(value1.isPresent());
-    assertThat(value1.get()).isEqualTo("value1");
+    assertThat(retrievedValue.isPresent()).isTrue();
+    assertThat(retrievedValue.get()).isEqualTo(value1);
+    assertThat(retrievedValue.get().getAttachments()).isEqualTo(attachments);
+    assertThat(retrievedValue.get().isRead()).isTrue();
   }
 
   @Test
   public void getNonExistentKey() {
-    AttachmentsCache AttachmentsCache = new AttachmentsCache(100);
+    AttachmentsCache attachmentsCache = new AttachmentsCache(100);
+    ByteBuffer nonExistentKey = ByteBuffer.wrap("nonExistentKey".getBytes(StandardCharsets.UTF_8));
 
-    Optional<String> nonExistent = AttachmentsCache.get("nonExistentKey");
+    Optional<CacheValue> nonExistent = attachmentsCache.get(nonExistentKey);
 
     assertThat(nonExistent.isPresent()).isFalse();
   }
 
   @Test
   public void lruPolicy() {
-    AttachmentsCache AttachmentsCache = new AttachmentsCache(2);
-    AttachmentsCache.put("key1", "value1");
-    AttachmentsCache.put("key2", "value2");
-    AttachmentsCache.put("key3", "value3");
-    Optional<String> value1 = AttachmentsCache.get("key1");
-    Optional<String> value2 = AttachmentsCache.get("key2");
-    Optional<String> value3 = AttachmentsCache.get("key3");
+    AttachmentsCache attachmentsCache = new AttachmentsCache(2);
+    ByteBuffer key1 = ByteBuffer.wrap("key1".getBytes(StandardCharsets.UTF_8));
+    CacheValue value1 = new CacheValue(ImmutableMap.of("v", "1"), true);
+    ByteBuffer key2 = ByteBuffer.wrap("key2".getBytes(StandardCharsets.UTF_8));
+    CacheValue value2 = new CacheValue(ImmutableMap.of("v", "2"), true);
+    ByteBuffer key3 = ByteBuffer.wrap("key3".getBytes(StandardCharsets.UTF_8));
+    CacheValue value3 = new CacheValue(ImmutableMap.of("v", "3"), true);
 
-    assertThat(value1.isPresent()).isFalse();
-    assertThat(value2.isPresent());
-    assertThat(value2.get()).isEqualTo("value2");
-    assertThat(value3.isPresent());
-    assertThat(value3.get()).isEqualTo("value3");
+    attachmentsCache.put(key1, value1);
+    attachmentsCache.put(key2, value2);
+    // Access key1 to make it the most recently used.
+    attachmentsCache.get(key1);
+    // This should evict key2.
+    attachmentsCache.put(key3, value3);
+
+    Optional<CacheValue> retrievedValue1 = attachmentsCache.get(key1);
+    Optional<CacheValue> retrievedValue2 = attachmentsCache.get(key2);
+    Optional<CacheValue> retrievedValue3 = attachmentsCache.get(key3);
+
+    assertThat(retrievedValue1.isPresent()).isTrue();
+    assertThat(retrievedValue2.isPresent()).isFalse();
+    assertThat(retrievedValue3.isPresent()).isTrue();
   }
 }

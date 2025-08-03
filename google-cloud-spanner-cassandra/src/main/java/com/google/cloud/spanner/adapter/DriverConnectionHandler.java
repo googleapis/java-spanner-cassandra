@@ -42,7 +42,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
@@ -57,10 +57,7 @@ final class DriverConnectionHandler implements Runnable {
 
   private static final Logger LOG = LoggerFactory.getLogger(DriverConnectionHandler.class);
   private static final int HEADER_LENGTH = 9;
-  private static final String PREPARED_QUERY_ID_ATTACHMENT_PREFIX = "pqid/";
-  private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
-  private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
@@ -277,7 +274,7 @@ final class DriverConnectionHandler implements Runnable {
    * query to the attachments map. If a prepared query is not found, it sets an error in the result
    * object.
    *
-   * @param MessageContext The context contains the stream id, op code and payload to process.
+   * @param ctx The context contains the stream id, op code and payload to process.
    * @return A {@link PreparePayloadResult} containing the result of the operation.
    */
   private PreparePayloadResult preparePayload(MessageContext ctx) {
@@ -294,20 +291,16 @@ final class DriverConnectionHandler implements Runnable {
   }
 
   private PreparePayloadResult prepareExecuteMessage(Execute message, int streamId) {
-    ApiCallContext context;
-    Map<String, String> attachments = new HashMap<>();
-    if (message.queryId != null
-        && message.queryId.length > 0
-        && message.queryId[0] == WRITE_ACTION_QUERY_ID_PREFIX) {
-      context = DEFAULT_CONTEXT_WITH_LAR;
-      maxCommitDelayMillis.ifPresent(
-          delay -> attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, delay));
-    } else {
-      context = DEFAULT_CONTEXT;
+    Optional<AttachmentsCache.CacheValue> cacheValue =
+        adapterClientWrapper.getAttachmentsCache().get(ByteBuffer.wrap(message.queryId));
+    if (!cacheValue.isPresent()) {
+      return new PreparePayloadResult(
+          DEFAULT_CONTEXT,
+          Collections.emptyMap(),
+          Optional.of(unpreparedResponse(streamId, message.queryId)));
     }
-    Optional<ByteString> errorResponse =
-        prepareAttachmentForQueryId(streamId, attachments, message.queryId);
-    return new PreparePayloadResult(context, attachments, errorResponse);
+    ApiCallContext context = cacheValue.get().isRead() ? DEFAULT_CONTEXT : DEFAULT_CONTEXT_WITH_LAR;
+    return new PreparePayloadResult(context, cacheValue.get().getAttachments(), Optional.empty());
   }
 
   private PreparePayloadResult prepareBatchMessage(Batch message, int streamId) {
@@ -315,17 +308,16 @@ final class DriverConnectionHandler implements Runnable {
     Map<String, String> attachments = new HashMap<>();
     for (Object obj : message.queriesOrIds) {
       if (obj instanceof byte[]) {
-        Optional<ByteString> errorResponse =
-            prepareAttachmentForQueryId(streamId, attachments, (byte[]) obj);
-        if (errorResponse.isPresent()) {
-          attachmentErrorResponse = errorResponse;
+        byte[] queryId = (byte[]) obj;
+        Optional<AttachmentsCache.CacheValue> cacheValue =
+            adapterClientWrapper.getAttachmentsCache().get(ByteBuffer.wrap(queryId));
+        if (!cacheValue.isPresent()) {
+          attachmentErrorResponse = Optional.of(unpreparedResponse(streamId, queryId));
           break;
         }
+        attachments.putAll(cacheValue.get().getAttachments());
       }
     }
-    maxCommitDelayMillis.ifPresent(
-        delay -> attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, delay));
-    // No error, return with populated attachments.
     return new PreparePayloadResult(DEFAULT_CONTEXT_WITH_LAR, attachments, attachmentErrorResponse);
   }
 
@@ -338,24 +330,10 @@ final class DriverConnectionHandler implements Runnable {
       context = DEFAULT_CONTEXT_WITH_LAR;
       if (maxCommitDelayMillis.isPresent()) {
         attachments = new HashMap<>();
-        attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
+        attachments.put(
+            AdapterClientWrapper.MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
       }
     }
     return new PreparePayloadResult(context, attachments);
-  }
-
-  private Optional<ByteString> prepareAttachmentForQueryId(
-      int streamId, Map<String, String> attachments, byte[] queryId) {
-    String key = constructKey(queryId);
-    Optional<String> val = adapterClientWrapper.getAttachmentsCache().get(key);
-    if (!val.isPresent()) {
-      return Optional.of(unpreparedResponse(streamId, queryId));
-    }
-    attachments.put(key, val.get());
-    return Optional.empty();
-  }
-
-  private static String constructKey(byte[] queryId) {
-    return PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
   }
 }

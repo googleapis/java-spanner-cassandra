@@ -20,23 +20,34 @@ import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErro
 
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.api.gax.rpc.ServerStream;
+import com.google.cloud.spanner.adapter.AttachmentsCache.CacheValue;
 import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageRequest;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
 import com.google.spanner.adapter.v1.AdapterClient;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Wraps an {@link AdapterClient} to manage gRPC communication with the Adapter service. */
 final class AdapterClientWrapper {
   private static final Logger LOG = LoggerFactory.getLogger(AdapterClientWrapper.class);
+  static final String PREPARED_QUERY_ID_ATTACHMENT_PREFIX = "pqid/";
+  static final String WRITE_ACTION_QUERY_ID_PREFIX = "W";
+  static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
+
   private final AdapterClient adapterClient;
   private final AttachmentsCache attachmentsCache;
   private final SessionManager sessionManager;
+  private final Optional<String> maxCommitDelayMillis;
 
   /**
    * Constructs a wrapper around the AdapterClient responsible for procession gRPC communication.
@@ -48,10 +59,16 @@ final class AdapterClientWrapper {
   AdapterClientWrapper(
       AdapterClient adapterClient,
       AttachmentsCache attachmentsCache,
-      SessionManager sessionManager) {
+      SessionManager sessionManager,
+      Optional<Duration> maxCommitDelay) {
     this.adapterClient = adapterClient;
     this.attachmentsCache = attachmentsCache;
     this.sessionManager = sessionManager;
+    if (maxCommitDelay.isPresent()) {
+      this.maxCommitDelayMillis = Optional.of(String.valueOf(maxCommitDelay.get().toMillis()));
+    } else {
+      this.maxCommitDelayMillis = Optional.empty();
+    }
   }
 
   /**
@@ -80,7 +97,7 @@ final class AdapterClientWrapper {
       ServerStream<AdaptMessageResponse> serverStream =
           adapterClient.adaptMessageCallable().call(request, context);
       for (AdaptMessageResponse adaptMessageResponse : serverStream) {
-        adaptMessageResponse.getStateUpdatesMap().forEach(attachmentsCache::put);
+        processStateUpdates(adaptMessageResponse.getStateUpdatesMap());
         collectedPayloads.add(adaptMessageResponse.getPayload());
       }
     } catch (RuntimeException e) {
@@ -108,6 +125,38 @@ final class AdapterClientWrapper {
       LOG.error("Error stitching chunked payloads: ", e);
       return serverErrorResponse(streamId, e.getMessage());
     }
+  }
+
+  /**
+   * Processes the stateUpdates map from a gRPC response. This method searches for a prepared query
+   * ID, determines if the query is for a read or write operation, and populates the attachments
+   * cache. The cached value contains all original attachments plus a max_commit_delay for write
+   * operations, along with a boolean flag indicating if the operation is a read.
+   *
+   * @param stateUpdates The map of state updates from the server.
+   */
+  private void processStateUpdates(Map<String, String> stateUpdates) {
+    if (stateUpdates == null || stateUpdates.isEmpty()) {
+      return;
+    }
+    String queryId = null;
+    for (String key : stateUpdates.keySet()) {
+      if (key.startsWith(PREPARED_QUERY_ID_ATTACHMENT_PREFIX)) {
+        queryId = key.substring(PREPARED_QUERY_ID_ATTACHMENT_PREFIX.length());
+        break;
+      }
+    }
+    if (queryId == null) {
+      return;
+    }
+
+    boolean isRead = !queryId.startsWith(WRITE_ACTION_QUERY_ID_PREFIX);
+    Map<String, String> attachments = new HashMap<>(stateUpdates);
+    if (!isRead && maxCommitDelayMillis.isPresent()) {
+      attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
+    }
+    CacheValue cacheValue = new CacheValue(attachments, isRead);
+    attachmentsCache.put(ByteBuffer.wrap(queryId.getBytes(StandardCharsets.UTF_8)), cacheValue);
   }
 
   AttachmentsCache getAttachmentsCache() {

@@ -37,6 +37,7 @@ import com.datastax.oss.protocol.internal.request.Query;
 import com.datastax.oss.protocol.internal.request.query.QueryOptions;
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -68,6 +69,7 @@ public final class DriverConnectionHandlerTest {
   private static final ArgumentCaptor<Map<String, String>> attachmentsCaptor =
       ArgumentCaptor.forClass(Map.class);
   private AdapterClientWrapper mockAdapterClient;
+  private AttachmentsCache mockAttachmentsCache;
   private Socket mockSocket;
   private ByteArrayOutputStream outputStream;
 
@@ -76,6 +78,8 @@ public final class DriverConnectionHandlerTest {
   @Before
   public void setUp() throws IOException {
     mockAdapterClient = mock(AdapterClientWrapper.class);
+    mockAttachmentsCache = mock(AttachmentsCache.class);
+    when(mockAdapterClient.getAttachmentsCache()).thenReturn(mockAttachmentsCache);
     mockSocket = mock(Socket.class);
     outputStream = new ByteArrayOutputStream();
     when(mockSocket.getOutputStream()).thenReturn(outputStream);
@@ -120,7 +124,8 @@ public final class DriverConnectionHandlerTest {
             any(), attachmentsCaptor.capture(), contextCaptor.capture(), any(int.class));
     assertThat(contextCaptor.getValue().getExtraHeaders())
         .containsExactly("x-goog-spanner-route-to-leader", ImmutableList.of("true"));
-    assertThat(attachmentsCaptor.getValue()).containsExactly("max_commit_delay", "100");
+    assertThat(attachmentsCaptor.getValue())
+        .containsExactly(AdapterClientWrapper.MAX_COMMIT_DELAY_ATTACHMENT_KEY, "100");
   }
 
   @Test
@@ -143,15 +148,19 @@ public final class DriverConnectionHandlerTest {
 
   @Test
   public void successfulExecuteMessage() throws IOException {
-    byte[] queryId = {1, 2};
+    byte[] queryId = "R_123".getBytes(StandardCharsets.UTF_8);
     byte[] validPayload = createExecuteMessage(queryId);
     ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
-    AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
-    AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8.name()), "query");
-    when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
+    Map<String, String> attachments =
+        ImmutableMap.of(
+            AdapterClientWrapper.PREPARED_QUERY_ID_ATTACHMENT_PREFIX
+                + new String(queryId, StandardCharsets.UTF_8),
+            "query");
+    when(mockAttachmentsCache.get(ByteBuffer.wrap(queryId)))
+        .thenReturn(Optional.of(new AttachmentsCache.CacheValue(attachments, true)));
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
@@ -159,23 +168,28 @@ public final class DriverConnectionHandlerTest {
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
     verify(mockAdapterClient)
-        .sendGrpcRequest(any(), any(), contextCaptor.capture(), any(int.class));
+        .sendGrpcRequest(
+            any(), attachmentsCaptor.capture(), contextCaptor.capture(), any(int.class));
+    assertThat(attachmentsCaptor.getValue()).isEqualTo(attachments);
     assertThat(contextCaptor.getValue().getExtraHeaders()).isEmpty();
   }
 
   @Test
   public void successfulDmlExecuteMessage() throws IOException {
     // Add the `W` prefix to indicate that this query originates from a prepared DML statement.
-    byte[] queryId = "W123".getBytes(StandardCharsets.UTF_8.name());
+    byte[] queryId = "W_123".getBytes(StandardCharsets.UTF_8.name());
     byte[] validPayload = createExecuteMessage(queryId);
     ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
-    AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
-    String preparedQueryKey = "pqid/" + new String(queryId, StandardCharsets.UTF_8.name());
-    AttachmentsCache.put(preparedQueryKey, "query");
-    when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
+    Map<String, String> attachments =
+        ImmutableMap.of(
+            AdapterClientWrapper.PREPARED_QUERY_ID_ATTACHMENT_PREFIX
+                + new String(queryId, StandardCharsets.UTF_8),
+            "query");
+    when(mockAttachmentsCache.get(ByteBuffer.wrap(queryId)))
+        .thenReturn(Optional.of(new AttachmentsCache.CacheValue(attachments, false)));
 
     // Use a max commit delay of 100 ms.
     DriverConnectionHandler handler =
@@ -188,10 +202,9 @@ public final class DriverConnectionHandlerTest {
     verify(mockAdapterClient)
         .sendGrpcRequest(
             any(), attachmentsCaptor.capture(), contextCaptor.capture(), any(int.class));
+    assertThat(attachmentsCaptor.getValue()).isEqualTo(attachments);
     assertThat(contextCaptor.getValue().getExtraHeaders())
         .containsExactly("x-goog-spanner-route-to-leader", ImmutableList.of("true"));
-    assertThat(attachmentsCaptor.getValue())
-        .containsExactly(preparedQueryKey, "query", "max_commit_delay", "100");
   }
 
   @Test
@@ -200,8 +213,7 @@ public final class DriverConnectionHandlerTest {
     byte[] validPayload = createExecuteMessage(queryId);
     ByteString response = unpreparedResponse(STREAM_ID, queryId);
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
-    AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
-    when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
+    when(mockAttachmentsCache.get(ByteBuffer.wrap(queryId))).thenReturn(Optional.empty());
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
@@ -213,15 +225,19 @@ public final class DriverConnectionHandlerTest {
 
   @Test
   public void successfulBatchMessage() throws IOException {
-    byte[] queryId = {1, 2};
+    byte[] queryId = "W_123".getBytes(StandardCharsets.UTF_8);
     byte[] validPayload = createBatchMessage(queryId);
     ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
-    AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
-    AttachmentsCache.put("pqid/" + new String(queryId, StandardCharsets.UTF_8.name()), "query");
-    when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
+    Map<String, String> attachments =
+        ImmutableMap.of(
+            AdapterClientWrapper.PREPARED_QUERY_ID_ATTACHMENT_PREFIX
+                + new String(queryId, StandardCharsets.UTF_8),
+            "query");
+    when(mockAttachmentsCache.get(ByteBuffer.wrap(queryId)))
+        .thenReturn(Optional.of(new AttachmentsCache.CacheValue(attachments, false)));
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
@@ -229,7 +245,9 @@ public final class DriverConnectionHandlerTest {
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
     verify(mockAdapterClient)
-        .sendGrpcRequest(any(), any(), contextCaptor.capture(), any(int.class));
+        .sendGrpcRequest(
+            any(), attachmentsCaptor.capture(), contextCaptor.capture(), any(int.class));
+    assertThat(attachmentsCaptor.getValue()).isEqualTo(attachments);
     assertThat(contextCaptor.getValue().getExtraHeaders())
         .containsExactly("x-goog-spanner-route-to-leader", ImmutableList.of("true"));
   }
@@ -240,8 +258,7 @@ public final class DriverConnectionHandlerTest {
     byte[] validPayload = createBatchMessage(queryId);
     ByteString response = unpreparedResponse(STREAM_ID, queryId);
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
-    AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
-    when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
+    when(mockAttachmentsCache.get(ByteBuffer.wrap(queryId))).thenReturn(Optional.empty());
 
     DriverConnectionHandler handler = new DriverConnectionHandler(mockSocket, mockAdapterClient);
     handler.run();
