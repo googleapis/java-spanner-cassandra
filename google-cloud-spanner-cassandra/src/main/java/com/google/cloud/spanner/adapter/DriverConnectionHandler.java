@@ -169,10 +169,6 @@ final class DriverConnectionHandler implements Runnable {
                   streamId);
           // Now response holds the gRPC result, which might still be empty.
         }
-                  payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId));
-        }
-        outputStream.flush();
-        recordMetrics(startTime);
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
@@ -183,8 +179,7 @@ final class DriverConnectionHandler implements Runnable {
       }
       response.writeTo(outputStream);
       outputStream.flush();
-      long d = Duration.between(startTime, Instant.now()).toMillis();
-      adapterClientWrapper.recordMetrics(d, SUCCESS_METRIC_ATTRIBUTES);
+      recordMetrics(startTime);
     }
   }
 
