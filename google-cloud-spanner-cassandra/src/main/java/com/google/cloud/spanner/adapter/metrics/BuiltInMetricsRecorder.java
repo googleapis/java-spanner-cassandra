@@ -26,7 +26,7 @@ import io.opentelemetry.api.metrics.Meter;
 import java.util.Map;
 
 /** Implementation for recording built in metrics. */
-public class BuiltInMetricsRecorder {
+public final class BuiltInMetricsRecorder {
 
   private final LongCounter operationCountRecorder;
   private final DoubleHistogram operationLatencyRecorder;

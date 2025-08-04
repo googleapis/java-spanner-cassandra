@@ -55,7 +55,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /** Collects and publishes current values to Google metrics exporter. */
-public class BuiltInMetricsProvider {
+public final class BuiltInMetricsProvider {
 
   public static BuiltInMetricsProvider INSTANCE = new BuiltInMetricsProvider();
 
@@ -159,7 +159,7 @@ public class BuiltInMetricsProvider {
     return String.format("%06x", shiftedValue);
   }
 
-  static String detectClientLocation() {
+  private static String detectClientLocation() {
     GCPPlatformDetector detector = GCPPlatformDetector.DEFAULT_INSTANCE;
     DetectedPlatform detectedPlatform = detector.detectPlatform();
     // All platform except GKE uses "cloud_region" for region attribute.

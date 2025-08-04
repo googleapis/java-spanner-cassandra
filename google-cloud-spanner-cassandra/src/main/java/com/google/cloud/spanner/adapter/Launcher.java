@@ -114,7 +114,7 @@ public class Launcher {
 
     Adapter adapter = new Adapter(opBuilder.build());
     LOG.info(
-        "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels and max commit"
+        "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels, max commit"
             + " delay of {} and built-in metrics enabled: {}",
         databaseUri,
         inetAddress,

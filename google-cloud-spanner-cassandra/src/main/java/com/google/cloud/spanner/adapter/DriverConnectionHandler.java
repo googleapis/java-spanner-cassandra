@@ -30,6 +30,7 @@ import com.datastax.oss.protocol.internal.request.Execute;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
 import com.google.common.collect.ImmutableMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -69,6 +70,7 @@ final class DriverConnectionHandler implements Runnable {
   private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
   private static final int defaultStreamId = -1;
+  private final BuiltInMetricsRecorder metricsRecorder;
 
   // These contexts are thread-safe and can be reused across all instances.
   private static final GrpcCallContext DEFAULT_CONTEXT = GrpcCallContext.createDefault();
@@ -87,9 +89,13 @@ final class DriverConnectionHandler implements Runnable {
    * @param maxCommitDelay The max commit delay to set in requests to optimize write throughput.
    */
   public DriverConnectionHandler(
-      Socket socket, AdapterClientWrapper adapterClientWrapper, Optional<Duration> maxCommitDelay) {
+      Socket socket,
+      AdapterClientWrapper adapterClientWrapper,
+      BuiltInMetricsRecorder metricsRecorder,
+      Optional<Duration> maxCommitDelay) {
     this.socket = socket;
     this.adapterClientWrapper = adapterClientWrapper;
+    this.metricsRecorder = metricsRecorder;
     if (maxCommitDelay.isPresent()) {
       this.maxCommitDelayMillis = Optional.of(String.valueOf(maxCommitDelay.get().toMillis()));
     } else {
@@ -98,8 +104,11 @@ final class DriverConnectionHandler implements Runnable {
   }
 
   @VisibleForTesting
-  public DriverConnectionHandler(Socket socket, AdapterClientWrapper adapterClientWrapper) {
-    this(socket, adapterClientWrapper, Optional.empty());
+  public DriverConnectionHandler(
+      Socket socket,
+      AdapterClientWrapper adapterClientWrapper,
+      BuiltInMetricsRecorder metricsRecorder) {
+    this(socket, adapterClientWrapper, metricsRecorder, Optional.empty());
   }
 
   /** Runs the connection handler, processing incoming TCP data and sending gRPC requests. */
@@ -154,8 +163,7 @@ final class DriverConnectionHandler implements Runnable {
                   payload, prepareResult.getAttachments(), prepareResult.getContext(), streamId));
         }
         outputStream.flush();
-        long d = Duration.between(startTime, Instant.now()).toMillis();
-        adapterClientWrapper.recordMetrics(d, SUCCESS_METRIC_ATTRIBUTES);
+        recordMetrics(startTime);
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
@@ -166,6 +174,15 @@ final class DriverConnectionHandler implements Runnable {
         outputStream.flush();
       }
     }
+  }
+
+  private void recordMetrics(Instant startTime) {
+    if (startTime == null) {
+      return;
+    }
+    final long latency = Duration.between(startTime, Instant.now()).toMillis();
+    metricsRecorder.recordOperationCount(1, SUCCESS_METRIC_ATTRIBUTES);
+    metricsRecorder.recordOperationLatency(latency, SUCCESS_METRIC_ATTRIBUTES);
   }
 
   private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)

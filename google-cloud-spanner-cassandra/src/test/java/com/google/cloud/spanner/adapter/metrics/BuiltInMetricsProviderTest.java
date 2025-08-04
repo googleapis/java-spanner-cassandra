@@ -16,6 +16,7 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter.metrics;
 
+import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider.generateClientHash;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -24,32 +25,27 @@ import org.junit.Test;
 public class BuiltInMetricsProviderTest {
   @Test
   public void testGenerateClientHashWithSimpleUid() {
-    String clientUid = "testClient";
-    verifyHash(BuiltInMetricsProvider.generateClientHash(clientUid));
+    verifyHash(generateClientHash("testClient"));
   }
 
   @Test
   public void testGenerateClientHashWithEmptyUid() {
-    String clientUid = "";
-    verifyHash(BuiltInMetricsProvider.generateClientHash(clientUid));
+    verifyHash(generateClientHash(""));
   }
 
   @Test
   public void testGenerateClientHashWithNullUid() {
-    String clientUid = null;
-    verifyHash(BuiltInMetricsProvider.generateClientHash(clientUid));
+    verifyHash(generateClientHash(null));
   }
 
   @Test
   public void testGenerateClientHashWithLongUid() {
-    String clientUid = "aVeryLongUniqueClientIdentifierThatIsUnusuallyLong";
-    verifyHash(BuiltInMetricsProvider.generateClientHash(clientUid));
+    verifyHash(generateClientHash("aVeryLongUniqueClientIdentifierThatIsUnusuallyLong"));
   }
 
   @Test
   public void testGenerateClientHashWithSpecialCharacters() {
-    String clientUid = "273d60f2-5604-42f1-b687-f5f1b975fd07@2316645@test#";
-    verifyHash(BuiltInMetricsProvider.generateClientHash(clientUid));
+    verifyHash(generateClientHash("273d60f2-5604-42f1-b687-f5f1b975fd07@2316645@test#"));
   }
 
   private void verifyHash(String hash) {

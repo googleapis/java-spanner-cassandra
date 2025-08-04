@@ -140,8 +140,7 @@ final class Adapter extends AbstractApiService {
       sessionManager.getSession();
 
       adapterClientWrapper =
-          new AdapterClientWrapper(
-              adapterClient, attachmentsCache, sessionManager, options.getMetricsRecorder());
+          new AdapterClientWrapper(adapterClient, attachmentsCache, sessionManager);
 
       // Start listening on the specified host and port.
       serverSocket =
@@ -182,7 +181,11 @@ final class Adapter extends AbstractApiService {
         // Turn on TCP_NODELAY to optimize for chatty protocol that prefers low latency.
         socket.setTcpNoDelay(true);
         executor.execute(
-            new DriverConnectionHandler(socket, adapterClientWrapper, options.getMaxCommitDelay()));
+            new DriverConnectionHandler(
+                socket,
+                adapterClientWrapper,
+                options.getMetricsRecorder(),
+                options.getMaxCommitDelay()));
         LOG.debug("Accepted client connection from: {}", socket.getRemoteSocketAddress());
       }
     } catch (IOException e) {

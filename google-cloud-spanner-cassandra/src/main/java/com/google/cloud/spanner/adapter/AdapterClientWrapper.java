@@ -20,7 +20,6 @@ import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErro
 
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.api.gax.rpc.ServerStream;
-import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
 import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageRequest;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
@@ -39,7 +38,6 @@ final class AdapterClientWrapper {
   private final AdapterClient adapterClient;
   private final AttachmentsCache attachmentsCache;
   private final SessionManager sessionManager;
-  private final BuiltInMetricsRecorder metricsRecorder;
 
   /**
    * Constructs a wrapper around the AdapterClient responsible for procession gRPC communication.
@@ -47,17 +45,14 @@ final class AdapterClientWrapper {
    * @param adapterClient Stub used to communicate with the Adapter service.
    * @param attachmentsCache The global cache for the attachments.
    * @param sessionManager The manager providing session for requests.
-   * @param metricsRecorder The metrics recorder for recording metrics.
    */
   AdapterClientWrapper(
       AdapterClient adapterClient,
       AttachmentsCache attachmentsCache,
-      SessionManager sessionManager,
-      BuiltInMetricsRecorder metricsRecorder) {
+      SessionManager sessionManager) {
     this.adapterClient = adapterClient;
     this.attachmentsCache = attachmentsCache;
     this.sessionManager = sessionManager;
-    this.metricsRecorder = metricsRecorder;
   }
 
   /**
@@ -118,10 +113,5 @@ final class AdapterClientWrapper {
 
   AttachmentsCache getAttachmentsCache() {
     return attachmentsCache;
-  }
-
-  void recordMetrics(long latency, Map<String, String> attributes) {
-    metricsRecorder.recordOperationCount(1, attributes);
-    metricsRecorder.recordOperationLatency(latency, attributes);
   }
 }
