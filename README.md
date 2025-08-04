@@ -23,6 +23,7 @@ This client acts as a local tcp proxy, intercepting the raw Cassandra protocol b
   - [Sidecar Proxy (or Standalone Process)](#sidecar-proxy)
 - [Supported Cassandra Versions](#supported-cassandra-versions)
 - [Unsupported Features](#unsupported-features)
+- [Custom Retry Policy](#custom-retry-policy)
 - [License](#license)
 
 ## When to Use Spanner Cassandra Java Client?
@@ -167,6 +168,10 @@ By default, Spanner Cassandra client communicates using the [Cassandra 4.0 proto
 
 * named parameters
 * unset parameter value
+
+## Custom Retry Policy
+
+The Spanner Cassandra Java Client includes a custom retry policy that is tailored for Spanner Server. For more details on how to use and configure this policy, please see the [Custom Retry Policy documentation](docs/retry-policy.md).
 
 ## License
 
