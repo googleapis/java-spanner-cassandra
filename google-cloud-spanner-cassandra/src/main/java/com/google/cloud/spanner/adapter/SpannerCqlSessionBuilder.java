@@ -33,7 +33,6 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.TimeoutException;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,6 +64,7 @@ public final class SpannerCqlSessionBuilder
   private boolean enableBuiltInMetrics = false;
   private TransportChannelProvider channelProvider = null;
   private Credentials credentials;
+  private boolean useVirtualThreads;
 
   /**
    * Wraps the default CQL session with a SpannerCqlSession instance.
@@ -132,6 +132,16 @@ public final class SpannerCqlSessionBuilder
   /** Sets the GCP credentials for accessing Cloud Spanner. */
   public SpannerCqlSessionBuilder setGoogleCloudCredentials(Credentials credentials) {
     this.credentials = credentials;
+    return this;
+  }
+
+  /**
+   * (Optional, default `false`) Enables/disables the use of virtual threads for the gRPC executor.
+   * Setting this option only has any effect on Java 21 and higher. In all other cases, the option
+   * will be ignored.
+   */
+  protected SpannerCqlSessionBuilder setUseVirtualThreads(boolean useVirtualThreads) {
+    this.useVirtualThreads = useVirtualThreads;
     return this;
   }
 
@@ -259,12 +269,9 @@ public final class SpannerCqlSessionBuilder
             .credentials(credentials)
             .maxCommitDelay(maxCommitDelay.orElse(null))
             .metricsRecorder(metricsRecorder)
+            .useVirtualThreads(useVirtualThreads)
             .build();
     adapter = new Adapter(adapterOptions);
-    try {
-      adapter.start();
-    } catch (TimeoutException e) {
-      throw new RuntimeException("Adapter start timed out.", e);
-    }
+    adapter.start();
   }
 }

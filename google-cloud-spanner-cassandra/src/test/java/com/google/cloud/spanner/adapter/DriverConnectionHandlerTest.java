@@ -39,6 +39,7 @@ import com.google.api.gax.rpc.ApiCallContext;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.protobuf.ByteString;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import java.io.ByteArrayInputStream;
@@ -88,7 +89,7 @@ public final class DriverConnectionHandlerTest {
   @Test
   public void successfulQueryMessage() throws IOException {
     byte[] validPayload = createQueryMessage();
-    byte[] grpcResponse = "gRPC response".getBytes(StandardCharsets.UTF_8.name());
+    ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
@@ -107,7 +108,7 @@ public final class DriverConnectionHandlerTest {
   @Test
   public void successfulDmlQueryMessage() throws IOException {
     byte[] validPayload = createDmlQueryMessage();
-    byte[] grpcResponse = "gRPC response".getBytes(StandardCharsets.UTF_8.name());
+    ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
@@ -134,7 +135,7 @@ public final class DriverConnectionHandlerTest {
   @Test
   public void successfulPrepareMessage() throws IOException {
     byte[] validPayload = createPrepareMessage();
-    byte[] grpcResponse = "gRPC response".getBytes(StandardCharsets.UTF_8.name());
+    ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
@@ -154,7 +155,7 @@ public final class DriverConnectionHandlerTest {
   public void successfulExecuteMessage() throws IOException {
     byte[] queryId = {1, 2};
     byte[] validPayload = createExecuteMessage(queryId);
-    byte[] grpcResponse = "gRPC response".getBytes(StandardCharsets.UTF_8.name());
+    ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
@@ -178,7 +179,7 @@ public final class DriverConnectionHandlerTest {
     // Add the `W` prefix to indicate that this query originates from a prepared DML statement.
     byte[] queryId = "W123".getBytes(StandardCharsets.UTF_8.name());
     byte[] validPayload = createExecuteMessage(queryId);
-    byte[] grpcResponse = "gRPC response".getBytes(StandardCharsets.UTF_8.name());
+    ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
@@ -212,7 +213,7 @@ public final class DriverConnectionHandlerTest {
   public void failedExecuteMessage_unpreparedError() throws IOException {
     byte[] queryId = {1, 2};
     byte[] validPayload = createExecuteMessage(queryId);
-    byte[] response = unpreparedResponse(STREAM_ID, queryId);
+    ByteString response = unpreparedResponse(STREAM_ID, queryId);
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
@@ -221,7 +222,7 @@ public final class DriverConnectionHandlerTest {
         new DriverConnectionHandler(mockSocket, mockAdapterClient, mockMetricsRecorder);
     handler.run();
 
-    assertThat(outputStream.toByteArray()).isEqualTo(response);
+    assertThat(ByteString.copyFrom(outputStream.toByteArray())).isEqualTo(response);
     verify(mockAdapterClient, never()).sendGrpcRequest(any(), any(), any(), any(int.class));
     verify(mockSocket).close();
   }
@@ -230,7 +231,7 @@ public final class DriverConnectionHandlerTest {
   public void successfulBatchMessage() throws IOException {
     byte[] queryId = {1, 2};
     byte[] validPayload = createBatchMessage(queryId);
-    byte[] grpcResponse = "gRPC response".getBytes(StandardCharsets.UTF_8.name());
+    ByteString grpcResponse = ByteString.copyFromUtf8("gRPC response");
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
@@ -255,7 +256,7 @@ public final class DriverConnectionHandlerTest {
   public void failedBatchMessage_unpreparedError() throws IOException {
     byte[] queryId = {1, 2};
     byte[] validPayload = createBatchMessage(queryId);
-    byte[] response = unpreparedResponse(STREAM_ID, queryId);
+    ByteString response = unpreparedResponse(STREAM_ID, queryId);
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     AttachmentsCache AttachmentsCache = new AttachmentsCache(1);
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(AttachmentsCache);
@@ -264,7 +265,7 @@ public final class DriverConnectionHandlerTest {
         new DriverConnectionHandler(mockSocket, mockAdapterClient, mockMetricsRecorder);
     handler.run();
 
-    assertThat(outputStream.toByteArray()).isEqualTo(response);
+    assertThat(ByteString.copyFrom(outputStream.toByteArray())).isEqualTo(response);
     verify(mockAdapterClient, never()).sendGrpcRequest(any(), any(), any(), any(int.class));
     verify(mockSocket).close();
   }
@@ -273,7 +274,7 @@ public final class DriverConnectionHandlerTest {
   public void shortHeader_writesErrorMessageToSocket() throws IOException {
     byte[] shortHeader = new byte[HEADER_LENGTH - 1];
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(shortHeader));
-    byte[] expectedResponse =
+    ByteString expectedResponse =
         serverErrorResponse(
             -1, "Server error during request processing: Payload is not well formed.");
 
@@ -281,7 +282,7 @@ public final class DriverConnectionHandlerTest {
         new DriverConnectionHandler(mockSocket, mockAdapterClient, mockMetricsRecorder);
     handler.run();
 
-    assertThat(outputStream.toByteArray()).isEqualTo(expectedResponse);
+    assertThat(ByteString.copyFrom(outputStream.toByteArray())).isEqualTo(expectedResponse);
     verify(mockSocket).close();
   }
 
@@ -289,7 +290,7 @@ public final class DriverConnectionHandlerTest {
   public void negativeBodyLength_writesErrorMessageToSocket() throws IOException {
     byte[] header = createHeaderWithBodyLength(-1);
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(header));
-    byte[] expectedResponse =
+    ByteString expectedResponse =
         serverErrorResponse(
             -1, "Server error during request processing: Payload is not well formed.");
 
@@ -297,7 +298,7 @@ public final class DriverConnectionHandlerTest {
         new DriverConnectionHandler(mockSocket, mockAdapterClient, mockMetricsRecorder);
     handler.run();
 
-    assertThat(outputStream.toByteArray()).isEqualTo(expectedResponse);
+    assertThat(ByteString.copyFrom(outputStream.toByteArray())).isEqualTo(expectedResponse);
     verify(mockSocket).close();
   }
 
@@ -307,7 +308,7 @@ public final class DriverConnectionHandlerTest {
     byte[] body = new byte[5];
     byte[] invalidPayload = concatenateArrays(header, body);
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(invalidPayload));
-    byte[] expectedResponse =
+    ByteString expectedResponse =
         serverErrorResponse(
             -1, "Server error during request processing: Payload is not well formed.");
 
@@ -316,7 +317,7 @@ public final class DriverConnectionHandlerTest {
 
     handler.run();
 
-    assertThat(outputStream.toByteArray()).isEqualTo(expectedResponse);
+    assertThat(ByteString.copyFrom(outputStream.toByteArray())).isEqualTo(expectedResponse);
     verify(mockSocket).close();
   }
 

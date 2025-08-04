@@ -124,5 +124,11 @@ public class Launcher {
         enableBuiltInMetrics);
 
     adapter.start();
+
+    try {
+      Thread.currentThread().join();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 }

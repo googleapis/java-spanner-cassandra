@@ -24,7 +24,6 @@ import com.google.protobuf.ByteString;
 import com.google.spanner.adapter.v1.AdaptMessageRequest;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
 import com.google.spanner.adapter.v1.AdapterClient;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,9 +61,9 @@ final class AdapterClientWrapper {
    * @param attachments A map of string key-value pairs to be included as attachments in the
    *     request.
    * @param streamId The stream id of the message to send.
-   * @return A byte array payload of the adapter's response.
+   * @return A {@link ByteString} payload of the adapter's response.
    */
-  byte[] sendGrpcRequest(
+  ByteString sendGrpcRequest(
       byte[] payload, Map<String, String> attachments, ApiCallContext context, int streamId) {
 
     AdaptMessageRequest request =
@@ -95,16 +94,16 @@ final class AdapterClientWrapper {
           streamId, "No response received from the server."); // No response payloads at all.
     }
 
-    try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+    try (ByteString.Output output = ByteString.newOutput()) {
       final int numPayloads = collectedPayloads.size();
       // In case of multiple responses, the last response contains the header. So write it first.
-      outputStream.write(collectedPayloads.get(numPayloads - 1).toByteArray());
+      collectedPayloads.get(numPayloads - 1).writeTo(output);
 
       // Then write the remaining responses.
       for (int i = 0; i < numPayloads - 1; i++) {
-        outputStream.write(collectedPayloads.get(i).toByteArray());
+        collectedPayloads.get(i).writeTo(output);
       }
-      return outputStream.toByteArray();
+      return output.toByteString();
     } catch (IOException e) {
       LOG.error("Error stitching chunked payloads: ", e);
       return serverErrorResponse(streamId, e.getMessage());
