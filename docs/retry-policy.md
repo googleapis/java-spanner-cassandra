@@ -30,6 +30,7 @@ datastax-java-driver {
   advanced.retry-policy {
     class = com.google.cloud.spanner.adapter.SpannerCqlRetryPolicy
   }
+  ...
 }
 ```
 
@@ -40,7 +41,7 @@ import com.google.cloud.spanner.adapter.SpannerCqlRetryPolicy;
 ...
 CqlSession session =
         SpannerCqlSession.builder()
-            .setDatabaseUri(projects/your_project/instances/your_instance/databases/your_db)
+            .setDatabaseUri("projects/your_project/instances/your_instance/databases/your_db")
             .addContactEndPoint(yourEndpoint) 
             .withLocalDatacenter("datacenter1")
             .withConfigLoader(

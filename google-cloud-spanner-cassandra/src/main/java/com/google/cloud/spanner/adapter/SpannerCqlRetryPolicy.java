@@ -41,7 +41,7 @@ import com.datastax.oss.driver.shaded.guava.common.collect.ImmutableList;
  * <p>For all other cases, it delegates the decision to the default retry policy, preserving the
  * standard driver behavior.
  */
-public class SpannerCqlRetryPolicy implements RetryPolicy {
+public final class SpannerCqlRetryPolicy implements RetryPolicy {
 
   private static final Logger LOG = LoggerFactory.getLogger(SpannerCqlRetryPolicy.class);
   private final RetryPolicy delegate;
@@ -70,7 +70,12 @@ public class SpannerCqlRetryPolicy implements RetryPolicy {
     this.delegate = new DefaultRetryPolicy(context, profileName);
   }
 
-  private boolean isRetryableSpanServerError(CoordinatorException e) {
+  /**
+   * Checks if the given exception is a Spanner-specific transient error that is safe to retry. This
+   * includes gRPC transport errors, connection issues, and standard Spanner transient errors like
+   * ABORTED or UNAVAILABLE.
+   */
+  private boolean IsRetryableSpannerError(CoordinatorException e) {
     if (!(e instanceof WriteFailureException || e instanceof ReadFailureException)) {
       return false;
     }
@@ -80,31 +85,30 @@ public class SpannerCqlRetryPolicy implements RetryPolicy {
 
   @Override
   public RetryDecision onErrorResponse(Request request, CoordinatorException e, int retryCount) {
-    String errorMessage = e.getMessage();
-
     // The Spanner proxy embeds the gRPC error message in the message string of WriteFailure and
     // ReadFailure frame.
     // We check for transient gRPC errors that are safe to retry.
-    if (isRetryableSpanServerError(e)) {
-      if (retryCount > MAX_RETRIES) {
-        LOG.error(
-            "Request with Spanner-specific transient error failed after hitting max retries ({})."
-                + " Last error: {}",
-            MAX_RETRIES,
-            errorMessage);
-        return RetryDecision.RETHROW;
-      }
-      LOG.warn(
-          "Spanner-specific transient error detected: '{}'. Retrying query (attempt {}).",
-          errorMessage,
-          retryCount + 1);
-      // Retry on the same node since Spanner is interpreted as a single node to Cassandra
-      // driver.
-      return RetryDecision.RETRY_SAME;
+    if (!IsRetryableSpannerError(e)) {
+      // For any other error, fall back to the default driver behavior.
+      return delegate.onErrorResponse(request, e, retryCount);
     }
 
-    // For any other error, fall back to the default driver behavior.
-    return delegate.onErrorResponse(request, e, retryCount);
+    String errorMessage = e.getMessage();
+    if (retryCount > MAX_RETRIES) {
+      LOG.error(
+          "Request with Spanner-specific transient error failed after hitting max retries ({})."
+              + " Last error: {}",
+          MAX_RETRIES,
+          errorMessage);
+      return RetryDecision.RETHROW;
+    }
+    LOG.warn(
+        "Spanner-specific transient error detected: '{}'. Retrying query (attempt {}).",
+        errorMessage,
+        retryCount + 1);
+    // Retry on the same node since Spanner is interpreted as a single node to Cassandra
+    // driver.
+    return RetryDecision.RETRY_SAME;
   }
 
   // --- Delegate all other methods to the default policy ---
