@@ -1,8 +1,10 @@
 # View and manage client-side metrics
 
-The Spanner Cassandra client provides client-side metrics that you can use along with server-side metrics to optimize performance and troubleshoot performance issues if they occur.
+The Spanner Cassandra client provides client-side metrics that you can use along with server-side metrics to optimize performance and and troubleshoot any performance issues.
 
-Client-side metrics are measured from the time a request received in the client to the time client sent response data to the driver. In contrast, server-side metrics are measured from the time Spanner receives a request until the last byte of data is sent to the client.
+Client-side metrics measure the total time a request takes i.e. from when the client sends the request till when the client gets the full response back.
+
+Server-side metrics measure only the time the server spends processing the request i.e. from when the server first receives the request till it has all the data back to the client.
 
 ## Enable client-side metrics
 
@@ -23,7 +25,7 @@ CqlSession session = SpannerCqlSession.builder()
 
 Client-side metrics are available after you [enable the Cloud Monitoring API](https://console.cloud.google.com/flows/enableapi?apiid=monitoring.googleapis.com).
 
-Client-side metrics are available for users or service accounts that are granted the Identity and Access Management (IAM) monitoring.timeSeries.create permission. This permission is included in the following Spanner IAM roles:
+Client-side metrics are available for users or service accounts that are granted the Identity and Access Management (IAM) `monitoring.timeSeries.create` permission. This permission is included in the following Spanner IAM roles:
 
  * [Cloud Spanner Admin](https://cloud.google.com/iam/docs/understanding-roles#spanner.admin) (`roles/spanner.admin`)
  * [Cloud Spanner Database Admin](https://cloud.google.com/iam/docs/understanding-roles#spanner.databaseAdmin) (`roles/spanner.databaseAdmin`)
@@ -54,4 +56,4 @@ Your application needs to run for at least a minute before you can view any publ
 
 ## Pricing
 
-There is no charge to view client-side metrics in Cloud Monitoring. 
+There is no additional charge to view client-side metrics in Cloud Monitoring. 

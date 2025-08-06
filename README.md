@@ -163,7 +163,7 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
 
 ## View and manage client-side metrics
 
-The Spanner Cassandra client provides client-side metrics that you can use along with server-side metrics to optimize performance and troubleshoot performance issues if they occur, please see the [View and manage client-side metrics documentation](docs/client-side-metrics.md).
+The Spanner Cassandra client provides client-side metrics that you can use along with server-side metrics to optimize performance and troubleshoot any performance issues, please see the [View and manage client-side metrics documentation](docs/client-side-metrics.md).
 
 ## Supported Cassandra Versions
 
