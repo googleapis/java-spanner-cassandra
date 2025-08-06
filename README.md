@@ -20,10 +20,11 @@ This client acts as a local tcp proxy, intercepting the raw Cassandra protocol b
 - [Spanner Instructions](#spanner-instructions)
 - [Getting started](#getting-started)
   - [In-Process Dependency](#in-process-dependency-recommended)
-  - [Sidecar Proxy (or Standalone Process)](#sidecar-proxy)
+  - [Sidecar Proxy (or Standalone Process)](#sidecar-proxy-or-standalone-process)
 - [Supported Cassandra Versions](#supported-cassandra-versions)
-- [Unsupported Features](#unsupported-features)
+- [Client-side Metrics](#view-and-manage-client-side-metrics)
 - [Custom Retry Policy](#custom-retry-policy)
+- [Unsupported Features](#unsupported-features)
 - [License](#license)
 
 ## When to Use Spanner Cassandra Java Client?
@@ -159,6 +160,10 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
 
     * Replace the value of `-DdatabaseUri` with your Spanner database URI.
     * You can omit `-Dhost` to use the default `0.0.0.0`, omit `-Dport` to use the default `9042`, and omit `-DnumGrpcChannels` to use the default `4`.
+
+## View and manage client-side metrics
+
+The Spanner Cassandra client provides client-side metrics that you can use along with server-side metrics to optimize performance and troubleshoot any performance issues, please see the [View and manage client-side metrics documentation](docs/client-side-metrics.md).
 
 ## Supported Cassandra Versions
 
