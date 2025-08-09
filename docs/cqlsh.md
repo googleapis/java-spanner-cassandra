@@ -56,10 +56,10 @@ Launch `cqlsh` with the configured/default settings:
 
 Launch `cqlsh` with the custom hostname and port:
 ```sh
-./cqlsh <java_client_hostnama> <java_client_port> --protocol-version 4
+./cqlsh <java_client_hostname> <java_client_port> --protocol-version 4
 ```
 
-Replace `<java_client_hostnama>` and `<java_client_port>` with the appropriate values.
+Replace `<java_client_hostname>` and `<java_client_port>` with the appropriate values.
 
 ### Option 2: Use Dockerized cqlsh
 
