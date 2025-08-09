@@ -32,6 +32,8 @@ import com.datastax.oss.protocol.internal.request.Query;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import io.netty.buffer.ByteBuf;
@@ -43,6 +45,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,10 +66,11 @@ final class DriverConnectionHandler implements Runnable {
   private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
-  private static final String ADAPT_MESSAGE_METHOD = "Adapter.AdaptMessage";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
+  private static final Cache<ByteBuffer, String> ATTACHMENT_KEY_CACHE =
+      CacheBuilder.newBuilder().maximumSize(10_000).build();
   private final Socket socket;
   private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
@@ -77,8 +81,6 @@ final class DriverConnectionHandler implements Runnable {
   private static final GrpcCallContext DEFAULT_CONTEXT = GrpcCallContext.createDefault();
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
-  private static final Map<String, String> SUCCESS_METRIC_ATTRIBUTES =
-      ImmutableMap.of("method", ADAPT_MESSAGE_METHOD, "status", "OK");
   private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
       GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
   private static final byte[] EMPTY_BYTES = new byte[0];
@@ -188,8 +190,8 @@ final class DriverConnectionHandler implements Runnable {
       return;
     }
     final long latency = Duration.between(startTime, Instant.now()).toMillis();
-    metricsRecorder.recordOperationCount(1, SUCCESS_METRIC_ATTRIBUTES);
-    metricsRecorder.recordOperationLatency(latency, SUCCESS_METRIC_ATTRIBUTES);
+    metricsRecorder.recordOperationCount(1);
+    metricsRecorder.recordOperationLatency(latency);
   }
 
   private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)
@@ -380,6 +382,13 @@ final class DriverConnectionHandler implements Runnable {
   }
 
   private static String constructKey(byte[] queryId) {
-    return PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
+    ByteBuffer key = ByteBuffer.wrap(queryId);
+    String attachmentKey = ATTACHMENT_KEY_CACHE.getIfPresent(key);
+    if (attachmentKey == null) {
+      attachmentKey =
+          PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
+      ATTACHMENT_KEY_CACHE.put(key, attachmentKey);
+    }
+    return attachmentKey;
   }
 }
