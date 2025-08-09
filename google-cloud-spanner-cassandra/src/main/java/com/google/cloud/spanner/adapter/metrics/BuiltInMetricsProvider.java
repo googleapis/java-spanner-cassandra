@@ -23,7 +23,9 @@ import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.DA
 import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.INSTANCE_CONFIG_ID_KEY;
 import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.INSTANCE_ID_KEY;
 import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.LOCATION_ID_KEY;
+import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.METHOD_KEY;
 import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.PROJECT_ID_KEY;
+import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.STATUS_KEY;
 
 import com.google.api.gax.core.GaxProperties;
 import com.google.cloud.opentelemetry.detection.AttributeKeys;
@@ -48,8 +50,6 @@ import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -121,14 +121,16 @@ public final class BuiltInMetricsProvider {
     return attributesBuilder.build();
   }
 
-  public Map<String, String> createDefaultAttributes(String databaseId) {
-    Map<String, String> defaultAttributes = new HashMap<>();
-    defaultAttributes.put(DATABASE_KEY.getKey(), databaseId);
-    defaultAttributes.put(
+  public Attributes createDefaultAttributes(String databaseId) {
+    AttributesBuilder defaultAttributesBuilder = Attributes.builder();
+    defaultAttributesBuilder.put(DATABASE_KEY.getKey(), databaseId);
+    defaultAttributesBuilder.put(
         CLIENT_NAME_KEY.getKey(),
         "spanner-cassandra-java/" + GaxProperties.getLibraryVersion(getClass()));
-    defaultAttributes.put(CLIENT_UID_KEY.getKey(), getDefaultTaskValue());
-    return defaultAttributes;
+    defaultAttributesBuilder.put(CLIENT_UID_KEY.getKey(), getDefaultTaskValue());
+    defaultAttributesBuilder.put(METHOD_KEY.getKey(), "Adapter.AdaptMessage");
+    defaultAttributesBuilder.put(STATUS_KEY.getKey(), "OK");
+    return defaultAttributesBuilder.build();
   }
 
   /**

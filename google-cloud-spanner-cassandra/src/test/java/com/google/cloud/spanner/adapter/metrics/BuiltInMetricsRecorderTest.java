@@ -15,8 +15,6 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter.metrics;
 
-import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -30,9 +28,6 @@ import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterBuilder;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -47,7 +42,7 @@ public class BuiltInMetricsRecorderTest {
   private LongCounter mockOperationCounter;
 
   private BuiltInMetricsRecorder metricsRecorder;
-  private Map<String, String> defaultAttributes;
+  private Attributes defaultAttributes;
 
   @Before
   public void setUp() {
@@ -78,58 +73,28 @@ public class BuiltInMetricsRecorderTest {
     when(mockCounterBuilder.build()).thenReturn(mockOperationCounter);
 
     // 5. Setup default attributes and create the recorder instance
-    defaultAttributes = new HashMap<>();
-    defaultAttributes.put("db", "test-db");
-    defaultAttributes.put("client_id", "test-client");
-    metricsRecorder = new BuiltInMetricsRecorder(mockOpenTelemetry, defaultAttributes);
-  }
-
-  @Test
-  public void toOtelAttributes_withNull_throwsException() {
-    assertThrows(NullPointerException.class, () -> metricsRecorder.toOtelAttributes(null));
-  }
-
-  @Test
-  public void toOtelAttributes_mergesAttributesCorrectly() {
-    Map<String, String> specificAttributes = new HashMap<>();
-    specificAttributes.put("method", "testMethod");
-    specificAttributes.put("status", "OK");
-
-    Attributes result = metricsRecorder.toOtelAttributes(specificAttributes);
-
-    Attributes expected =
+    defaultAttributes =
         Attributes.builder()
             .put("db", "test-db")
             .put("client_id", "test-client")
-            .put("method", "testMethod")
+            .put("method", "myMethod")
             .put("status", "OK")
             .build();
-
-    assertThat(result).isEqualTo(expected);
-  }
-
-  @Test
-  public void toOtelAttributes_withEmptySpecificAttributes_returnsDefaults() {
-    Attributes result = metricsRecorder.toOtelAttributes(Collections.emptyMap());
-
-    Attributes expected =
-        Attributes.builder().put("db", "test-db").put("client_id", "test-client").build();
-
-    assertThat(result).isEqualTo(expected);
+    metricsRecorder = new BuiltInMetricsRecorder(mockOpenTelemetry, defaultAttributes);
   }
 
   @Test
   public void recordOperationLatency_callsRecordWithCorrectValues() {
     double latency = 123.45;
-    Map<String, String> attributes = Collections.singletonMap("status", "ERROR");
 
-    metricsRecorder.recordOperationLatency(latency, attributes);
+    metricsRecorder.recordOperationLatency(latency);
 
     Attributes expectedAttributes =
         Attributes.builder()
             .put("db", "test-db")
             .put("client_id", "test-client")
-            .put("status", "ERROR")
+            .put("method", "myMethod")
+            .put("status", "OK")
             .build();
     verify(mockLatencyRecorder).record(latency, expectedAttributes);
   }
@@ -137,15 +102,14 @@ public class BuiltInMetricsRecorderTest {
   @Test
   public void recordOperationCount_callsAddWithCorrectValues() {
     long count = 5L;
-    Map<String, String> attributes = Collections.singletonMap("method", "myMethod");
-
-    metricsRecorder.recordOperationCount(count, attributes);
+    metricsRecorder.recordOperationCount(count);
 
     Attributes expectedAttributes =
         Attributes.builder()
             .put("db", "test-db")
             .put("client_id", "test-client")
             .put("method", "myMethod")
+            .put("status", "OK")
             .build();
     verify(mockOperationCounter).add(count, expectedAttributes);
   }
