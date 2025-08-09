@@ -1,37 +1,37 @@
-# Integrating CQLSH with Spanner Cassandra Java Client
+# Integrating cqlsh with Spanner Cassandra Java Client
 
-This guide provides detailed instructions on setting up CQLSH to connect to the Spanner Cassandra Java Client.
+This guide provides detailed instructions on setting up `cqlsh` to connect to the Spanner Cassandra Java Client.
 
 ## Prerequisites
 
-- **CQLSH Version:** Ensure you have CQLSH versions from the branches `cassandra-4.0.13` or `cassandra-4.1.5`.
+- **cqlsh Version:** Ensure you have `cqlsh` versions from the branches `cassandra-4.0.13` or `cassandra-4.1.5`.
 - **Spanner Cassandra Java Client Setup:** Ensure the Spanner Cassandra Java Client is set up and running.
 
 ## Setup Instructions
 
->> NOTE: You may skip these instructions, if you already have CQLSH interface installed.
+>> NOTE: You may skip these instructions, if you already have `cqlsh` interface installed.
 
-### Option 1: Install CQLSH Directly
+### Option 1: Install cqlsh Directly
 
-#### Step 1: Download CQLSH
+#### Step 1: Download cqlsh
 
-Download the appropriate version of CQLSH by cloning the repository and following the instructions:
+Download the appropriate version of `cqlsh` by cloning the repository and following the instructions:
 
-- **CQLSH 4.0.13:**
+- **cqlsh 4.0.13:**
   ```sh
   git clone https://github.com/apache/cassandra.git -b cassandra-4.0.13
   cd cassandra/bin
   ```
 
-- **CQLSH 4.1.5:**
+- **cqlsh 4.1.5:**
   ```sh
   git clone https://github.com/apache/cassandra.git -b cassandra-4.1.5
   cd cassandra/bin
   ```
 
-#### Step 2: Configure CQLSH to Connect to the Spanner Cassandra Java Client (Optional)
+#### Step 2: Configure cqlsh to Connect to the Spanner Cassandra Java Client (Optional)
 
-Edit the CQLSH configuration to point to the Spanner Cassandra Java Client:
+Edit the `cqlsh` configuration to point to the Spanner Cassandra Java Client:
 
 1. Open the `cqlshrc` configuration file. If it does not exist, create one in your home directory:
    ```sh
@@ -45,29 +45,29 @@ Edit the CQLSH configuration to point to the Spanner Cassandra Java Client:
    port = <java_client_port>
    ```
 
-   Replace `<java_client_port>` and `<java_client_port>` with the appropriate values for your java client setup.
+   Replace `<java_client_hostname>` and `<java_client_port>` with the appropriate values for your java client setup.
 
-#### Step 3: Launch CQLSH
+#### Step 3: Launch cqlsh
 
-Launch CQLSH with the configured/default settings:
+Launch `cqlsh` with the configured/default settings:
 ```sh
 ./cqlsh --protocol-version 4
 ```
 
-Launch CQLSH with the custom hostname and port:
+Launch `cqlsh` with the custom hostname and port:
 ```sh
 ./cqlsh <java_client_hostnama> <java_client_port> --protocol-version 4
 ```
 
 Replace `<java_client_hostnama>` and `<java_client_port>` with the appropriate values.
 
-### Option 2: Use Dockerized CQLSH
+### Option 2: Use Dockerized cqlsh
 
 #### Step 1: Install Docker
 
 Ensure Docker is installed on your machine. Follow the instructions on the [Docker website](https://docs.docker.com/get-docker/) to install Docker for your operating system.
 
-#### Step 2: Download and Run the Dockerized CQLSH
+#### Step 2: Download and Run the Dockerized cqlsh
 
 Download the relevant Docker image and open a bash shell:
 ```sh
@@ -90,14 +90,14 @@ docker run -it nuvo/docker-cqlsh bash
 
 Connect to the Spanner Cassandra Java Client using your IP address and port:
 ```sh
-cqlsh --cqlversion='3.4.5' '<your_ip_address>' --protocol-version 4
+cqlsh --protocol-version 4 '<your_ip_address>' <port>
 ```
 
-Replace `<your_ip_address>` with the local IP address obtained in Step 3.
+Replace `<your_ip_address>` with the local IP address and `<port>` obtained in Step 3.
 
 ## Unsupported Queries
 
-DDL queries are not supported by the Spanner Cassandra Java Client when using CQLSH:
+DDL queries are not supported by the Spanner Cassandra Java Client when using `cqlsh`:
 
 - **Create Table:**
   ```sql
