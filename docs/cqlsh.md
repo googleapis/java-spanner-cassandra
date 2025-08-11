@@ -95,6 +95,59 @@ cqlsh --protocol-version 4 '<your_ip_address>' <port>
 
 Replace `<your_ip_address>` with the local IP address and `<port>` obtained in Step 3.
 
+### Option 3: Use pip
+
+To download and install `cqlsh` using `pip`, the Python package installer, one can use the following command:
+Code
+
+```sh
+pip install cqlsh
+```
+
+#### Basic CRUD Operations
+
+**Insert:**
+```sql
+INSERT INTO keyspace_name.table_name (col1, col2, time, count)
+  VALUES ('1234', 'check', '2024-06-13T05:19:16.882Z', 10);
+
+// Inserting a row only if it does not already exist
+INSERT INTO keyspace_name.table_name (id, lastname, firstname)
+   VALUES (c4b65263-fe58-4846-83e8-f0e1c13d518f, 'John', 'Rissella')
+IF NOT EXISTS;
+```
+
+**Select & limit:**
+```sql
+SELECT * FROM keyspace_name.table_name WHERE col1 = '1234';
+SELECT * FROM keyspace_name.table_name limit 2;
+```
+
+**Update:**
+```sql
+UPDATE keyspace_name.table_name SET count = 15 WHERE col1 = '1234' AND col2 = 'check' AND time = '2024-06-13T05:19:16.882Z';
+```
+
+**Delete:**
+```sql
+DELETE FROM keyspace_name.table_name WHERE col1 = '1234' AND col2 = 'check';
+```
+
+**Using ttl :**
+```sql
+ INSERT INTO keyspace_name.table_name (col1, col2, col3)
+  VALUES ('col_val', '33233', 'test')
+USING TTL 100 and timestamp 1686638356882;
+
+ UPDATE keyspace_name.table_name using timestamp 1686638356882 and tll 100
+  SET count = 2, last_update_time = '2024-06-13T05:19:16.882Z' WHERE col1 = 'Value1';
+```
+
+**Allow filtering :**
+```sql
+SELECT * FROM keyspace_name.table_name WHERE col3>= 10 and col3<= 1000 limit 10 allow filtering ;
+```
+
 ## Unsupported Queries
 
 DDL queries are not supported by the Spanner Cassandra Java Client when using `cqlsh`:
