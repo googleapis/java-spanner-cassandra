@@ -13,17 +13,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
 package com.google.cloud.spanner.adapter;
+
+import java.net.InetAddress;
+import java.time.Duration;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.spanner.adapter.v1.DatabaseName;
+
 import io.opentelemetry.api.OpenTelemetry;
-import java.net.InetAddress;
-import java.time.Duration;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Main entry point for running a Spanner Cassandra Adapter as a stand-alone application.
@@ -43,6 +46,8 @@ import org.slf4j.LoggerFactory;
  *       with Spanner. Defaults to 4.
  *   <li>{@code maxCommitDelayMillis}: (Optional) The max commit delay to set in requests to
  *       optimize write throughput, in milliseconds. Defaults to none.
+ *   <li>{@code healthCheckPort}: (Optional) The port number for the health check server. Defaults
+ *       to none.
  * </ul>
  *
  * Example usage:
@@ -53,6 +58,7 @@ import org.slf4j.LoggerFactory;
  * -Dport=9042 \
  * -DnumGrpcChannels=4 \
  * -DmaxCommitDelayMillis=5 \
+ * -DhealthCheckPort=8080 \
  * -cp path/to/your/spanner-cassandra-launcher.jar com.google.cloud.spanner.adapter.SpannerCassandraLauncher
  * </pre>
  *
@@ -72,6 +78,48 @@ public class Launcher {
   private static final String DEFAULT_NUM_GRPC_CHANNELS = "4";
   private static final String MAX_COMMIT_DELAY_PROP_KEY = "maxCommitDelayMillis";
   private static final String ENABLE_BUILTIN_METRICS_PROP_KEY = "enableBuiltInMetrics";
+  private static final String HEALTH_CHECK_PORT_PROP_KEY = "healthCheckPort";
+
+  private final Adapter adapter;
+
+  @VisibleForTesting
+  Launcher(Adapter adapter) {
+    this.adapter = adapter;
+  }
+
+  void start(InetAddress address, int healthCheckPort) throws Exception {
+    HealthServer healthServer = null;
+    if (healthCheckPort > 0) {
+      healthServer = new HealthServer(address, healthCheckPort);
+      healthServer.start();
+    }
+
+    adapter.start();
+    if (healthServer != null) {
+      healthServer.setReady(true);
+    }
+
+    final HealthServer finalHealthServer = healthServer;
+    Runtime.getRuntime()
+        .addShutdownHook(
+            new Thread(
+                () -> {
+                  if (finalHealthServer != null) {
+                    finalHealthServer.stop();
+                  }
+                  try {
+                    adapter.stop();
+                  } catch (Exception e) {
+                    LOG.error("Failed to stop adapter", e);
+                  }
+                }));
+
+    try {
+      Thread.currentThread().join();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
 
   public static void main(String[] args) throws Exception {
     final String databaseUri = System.getProperty(DATABASE_URI_PROP_KEY);
@@ -83,6 +131,8 @@ public class Launcher {
     final String maxCommitDelayProperty = System.getProperty(MAX_COMMIT_DELAY_PROP_KEY);
     final boolean enableBuiltInMetrics =
         Boolean.parseBoolean(System.getProperty(ENABLE_BUILTIN_METRICS_PROP_KEY, "false"));
+    final int healthCheckPort =
+        Integer.parseInt(System.getProperty(HEALTH_CHECK_PORT_PROP_KEY, "0"));
 
     if (databaseUri == null) {
       throw new IllegalArgumentException(
@@ -112,10 +162,9 @@ public class Launcher {
       opBuilder.maxCommitDelay(Duration.ofMillis(Integer.parseInt(maxCommitDelayProperty)));
     }
 
-    Adapter adapter = new Adapter(opBuilder.build());
     LOG.info(
         "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels, max commit"
-            + " delay of {} and built-in metrics enabled: {}",
+            + " delay of {} and built-in metrics enabled: {},",
         databaseUri,
         inetAddress,
         port,
@@ -123,12 +172,6 @@ public class Launcher {
         maxCommitDelayProperty,
         enableBuiltInMetrics);
 
-    adapter.start();
-
-    try {
-      Thread.currentThread().join();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
+    new Launcher(new Adapter(opBuilder.build())).start(inetAddress, healthCheckPort);
   }
 }
