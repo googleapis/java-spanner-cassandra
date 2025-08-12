@@ -98,7 +98,6 @@ Replace `<your_ip_address>` with the local IP address and `<port>` obtained in S
 ### Option 3: Use pip
 
 To download and install `cqlsh` using `pip`, the Python package installer, one can use the following command:
-Code
 
 ```sh
 pip install cqlsh
