@@ -54,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -382,13 +383,12 @@ final class DriverConnectionHandler implements Runnable {
   }
 
   private static String constructKey(byte[] queryId) {
-    ByteBuffer key = ByteBuffer.wrap(queryId);
-    String attachmentKey = ATTACHMENT_KEY_CACHE.getIfPresent(key);
-    if (attachmentKey == null) {
-      attachmentKey =
-          PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
-      ATTACHMENT_KEY_CACHE.put(key, attachmentKey);
+    try {
+      return ATTACHMENT_KEY_CACHE.get(
+          ByteBuffer.wrap(queryId),
+          () -> PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8));
+    } catch (ExecutionException e) {
+      return PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
     }
-    return attachmentKey;
   }
 }
