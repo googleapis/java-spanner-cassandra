@@ -15,7 +15,18 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ThreadFactoryUtil.tryCreateVirtualThreadPerTaskExecutor;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
+import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import javax.annotation.concurrent.NotThreadSafe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.api.gax.core.CredentialsProvider;
 import com.google.api.gax.core.FixedCredentialsProvider;
@@ -28,20 +39,11 @@ import com.google.api.gax.rpc.HeaderProvider;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.NoCredentials;
+import static com.google.cloud.spanner.adapter.util.ThreadFactoryUtil.tryCreateVirtualThreadPerTaskExecutor;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.SocketException;
-import java.util.Collections;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import javax.annotation.concurrent.NotThreadSafe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /** Manages client connections, acting as an intermediary for communication with Spanner. */
 @NotThreadSafe
@@ -157,7 +159,6 @@ final class Adapter {
 
       started = true;
       LOG.info("Adapter started for database '{}'.", options.getDatabaseUri());
-
     } catch (IOException | RuntimeException e) {
       throw new AdapterStartException(e);
     }
