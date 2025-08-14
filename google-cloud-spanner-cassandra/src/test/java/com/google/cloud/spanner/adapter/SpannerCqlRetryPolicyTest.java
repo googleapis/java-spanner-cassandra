@@ -16,10 +16,17 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
+import java.net.InetSocketAddress;
+
 import static org.junit.Assert.assertEquals;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.datastax.oss.driver.api.core.ConsistencyLevel;
 import com.datastax.oss.driver.api.core.context.DriverContext;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.metadata.Node;
@@ -28,11 +35,6 @@ import com.datastax.oss.driver.api.core.retry.RetryPolicy;
 import com.datastax.oss.driver.api.core.servererrors.ReadFailureException;
 import com.datastax.oss.driver.api.core.servererrors.WriteFailureException;
 import com.datastax.oss.driver.api.core.session.Request;
-import java.net.InetSocketAddress;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
 
 @RunWith(JUnit4.class)
 public class SpannerCqlRetryPolicyTest {
@@ -50,6 +52,12 @@ public class SpannerCqlRetryPolicyTest {
     EndPoint endpoint = mock(EndPoint.class);
     when(node.getEndPoint()).thenReturn(endpoint);
     when(endpoint.resolve()).thenReturn(new InetSocketAddress("localhost", 9042));
+  }
+
+  @Test
+  public void testOnUnavailable() {
+    RetryDecision decision = policy.onUnavailable(request, ConsistencyLevel.LOCAL_QUORUM, 3, 2, 0);
+    assertEquals(RetryDecision.RETRY_SAME, decision);
   }
 
   @Test

@@ -16,20 +16,22 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-
-import com.google.api.gax.rpc.ApiCallContext;
-import com.google.api.gax.rpc.ServerStream;
-import com.google.protobuf.ByteString;
-import com.google.spanner.adapter.v1.AdaptMessageRequest;
-import com.google.spanner.adapter.v1.AdaptMessageResponse;
-import com.google.spanner.adapter.v1.AdapterClient;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.api.gax.rpc.ApiCallContext;
+import com.google.api.gax.rpc.ServerStream;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unavailableErrorResponse;
+import com.google.protobuf.ByteString;
+import com.google.spanner.adapter.v1.AdaptMessageRequest;
+import com.google.spanner.adapter.v1.AdaptMessageResponse;
+import com.google.spanner.adapter.v1.AdapterClient;
 
 /** Wraps an {@link AdapterClient} to manage gRPC communication with the Adapter service. */
 final class AdapterClientWrapper {
@@ -85,8 +87,8 @@ final class AdapterClientWrapper {
       }
     } catch (RuntimeException e) {
       LOG.error("Error executing AdaptMessage request: ", e);
-      // Any error in getting the AdaptMessageResponse should be reported back to the client.
-      return serverErrorResponse(streamId, e.getMessage());
+      // Any grpc exception should be reported back to the client as a retryable unavailable error.
+      return unavailableErrorResponse(streamId, e.getMessage());
     }
 
     if (collectedPayloads.isEmpty()) {
