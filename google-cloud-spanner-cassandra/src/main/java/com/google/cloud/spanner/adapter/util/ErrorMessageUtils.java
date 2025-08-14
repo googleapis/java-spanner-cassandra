@@ -16,18 +16,22 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter.util;
 
+import java.util.Collections;
+
 import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
 import com.datastax.oss.protocol.internal.Compressor;
 import com.datastax.oss.protocol.internal.Frame;
 import com.datastax.oss.protocol.internal.FrameCodec;
+import com.datastax.oss.protocol.internal.ProtocolConstants;
 import com.datastax.oss.protocol.internal.ProtocolConstants.ErrorCode;
 import com.datastax.oss.protocol.internal.response.Error;
+import com.datastax.oss.protocol.internal.response.error.Unavailable;
 import com.datastax.oss.protocol.internal.response.error.Unprepared;
 import com.google.api.core.InternalApi;
 import com.google.protobuf.ByteString;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import java.util.Collections;
 
 /**
  * Utility class for creating specific types of error response frames used in the server protocol,
@@ -72,6 +76,18 @@ public final class ErrorMessageUtils {
    */
   public static ByteString serverErrorResponse(int streamId, String message) {
     Error errorMsg = new Error(ErrorCode.SERVER_ERROR, message);
+    return errorResponse(streamId, errorMsg);
+  }
+
+  /**
+   * Creates a server error message response.
+   *
+   * @param streamId The stream id of the message.
+   * @param message The error message.
+   * @return A {@link ByteString} representing the server error response.
+   */
+  public static ByteString unavailableErrorResponse(int streamId, String message) {
+    Error errorMsg = new Unavailable(message, ProtocolConstants.ConsistencyLevel.QUORUM, 1, 1);
     return errorResponse(streamId, errorMsg);
   }
 

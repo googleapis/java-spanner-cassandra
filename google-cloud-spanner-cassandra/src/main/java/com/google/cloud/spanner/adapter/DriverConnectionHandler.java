@@ -16,27 +16,6 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
-import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
-
-import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
-import com.datastax.oss.driver.shaded.guava.common.annotations.VisibleForTesting;
-import com.datastax.oss.protocol.internal.Compressor;
-import com.datastax.oss.protocol.internal.Frame;
-import com.datastax.oss.protocol.internal.FrameCodec;
-import com.datastax.oss.protocol.internal.ProtocolConstants;
-import com.datastax.oss.protocol.internal.request.Batch;
-import com.datastax.oss.protocol.internal.request.Execute;
-import com.datastax.oss.protocol.internal.request.Query;
-import com.google.api.gax.grpc.GrpcCallContext;
-import com.google.api.gax.rpc.ApiCallContext;
-import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
-import com.google.common.collect.ImmutableMap;
-import com.google.protobuf.ByteString;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.Unpooled;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -51,8 +30,31 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
+import com.datastax.oss.driver.shaded.guava.common.annotations.VisibleForTesting;
+import com.datastax.oss.protocol.internal.Compressor;
+import com.datastax.oss.protocol.internal.Frame;
+import com.datastax.oss.protocol.internal.FrameCodec;
+import com.datastax.oss.protocol.internal.ProtocolConstants;
+import com.datastax.oss.protocol.internal.request.Batch;
+import com.datastax.oss.protocol.internal.request.Execute;
+import com.datastax.oss.protocol.internal.request.Query;
+import com.google.api.gax.grpc.GrpcCallContext;
+import com.google.api.gax.rpc.ApiCallContext;
+import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
+import com.google.common.collect.ImmutableMap;
+import com.google.protobuf.ByteString;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 
 /** Handles the connection from a driver, translating TCP data to gRPC requests and vice versa. */
 final class DriverConnectionHandler implements Runnable {
@@ -171,7 +173,7 @@ final class DriverConnectionHandler implements Runnable {
         }
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
-        // Create a server error response to send back to the client.
+        // Create an server error response to send back to the client to trigger retry.
         LOG.error("Error processing request: ", e);
         response =
             serverErrorResponse(
