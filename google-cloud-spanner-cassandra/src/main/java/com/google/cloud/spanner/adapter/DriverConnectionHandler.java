@@ -28,6 +28,7 @@ import com.datastax.oss.protocol.internal.FrameCodec;
 import com.datastax.oss.protocol.internal.ProtocolConstants;
 import com.datastax.oss.protocol.internal.request.Batch;
 import com.datastax.oss.protocol.internal.request.Execute;
+import com.datastax.oss.protocol.internal.request.Prepare;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
@@ -312,9 +313,16 @@ final class DriverConnectionHandler implements Runnable {
         return prepareBatchMessage((Batch) decodeFrame(ctx.payload).message, ctx.streamId);
       case ProtocolConstants.Opcode.QUERY:
         return prepareQueryMessage((Query) decodeFrame(ctx.payload).message, ctx.streamId);
+      case ProtocolConstants.Opcode.PREPARE:
+        return prepareMessage((Prepare) decodeFrame(ctx.payload).message, ctx.streamId);
       default:
         return new PreparePayloadResult(DEFAULT_CONTEXT);
     }
+  }
+
+  private PreparePayloadResult prepareMessage(Prepare message, int streamId) {
+    LOG.info("Query: {}", message.cqlQuery);
+    return new PreparePayloadResult(DEFAULT_CONTEXT);
   }
 
   private PreparePayloadResult prepareExecuteMessage(Execute message, int streamId) {
