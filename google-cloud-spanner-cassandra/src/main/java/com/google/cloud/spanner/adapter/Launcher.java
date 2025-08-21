@@ -13,15 +13,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
 package com.google.cloud.spanner.adapter;
 
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
 import com.google.spanner.adapter.v1.DatabaseName;
 import io.opentelemetry.api.OpenTelemetry;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.time.Duration;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +44,8 @@ import org.slf4j.LoggerFactory;
  *       with Spanner. Defaults to 4.
  *   <li>{@code maxCommitDelayMillis}: (Optional) The max commit delay to set in requests to
  *       optimize write throughput, in milliseconds. Defaults to none.
+ *   <li>{@code healthCheckPort}: (Optional) The port number for the health check server. If
+ *       unspecifed, health check server will NOT be started.
  * </ul>
  *
  * Example usage:
@@ -53,7 +56,8 @@ import org.slf4j.LoggerFactory;
  * -Dport=9042 \
  * -DnumGrpcChannels=4 \
  * -DmaxCommitDelayMillis=5 \
- * -cp path/to/your/spanner-cassandra-launcher.jar com.google.cloud.spanner.adapter.SpannerCassandraLauncher
+ * -DhealthCheckPort=8080 \
+ * -jar com.google.cloud.spanner.adapter.SpannerCassandraLauncher
  * </pre>
  *
  * @see Adapter
@@ -72,6 +76,38 @@ public class Launcher {
   private static final String DEFAULT_NUM_GRPC_CHANNELS = "4";
   private static final String MAX_COMMIT_DELAY_PROP_KEY = "maxCommitDelayMillis";
   private static final String ENABLE_BUILTIN_METRICS_PROP_KEY = "enableBuiltInMetrics";
+  private static final String HEALTH_CHECK_PORT_PROP_KEY = "healthCheckPort";
+
+  private final Adapter adapter;
+  private final HealthCheckServer healthCheckServer;
+
+  Launcher(Adapter adapter, @Nullable HealthCheckServer healthCheckServer) {
+    this.adapter = adapter;
+    this.healthCheckServer = healthCheckServer;
+  }
+
+  void launch() {
+    healthCheckServer.start();
+    adapter.start();
+
+    Runtime.getRuntime()
+        .addShutdownHook(
+            new Thread(
+                () -> {
+                  if (healthCheckServer != null) {
+                    healthCheckServer.stop();
+                  }
+                  try {
+                    adapter.stop();
+                  } catch (IOException e) {
+                    LOG.warn("Error while stopping Adapter: " + e.getMessage());
+                  }
+                }));
+
+    if (healthCheckServer != null) {
+      healthCheckServer.setReady(true);
+    }
+  }
 
   public static void main(String[] args) throws Exception {
     final String databaseUri = System.getProperty(DATABASE_URI_PROP_KEY);
@@ -83,10 +119,23 @@ public class Launcher {
     final String maxCommitDelayProperty = System.getProperty(MAX_COMMIT_DELAY_PROP_KEY);
     final boolean enableBuiltInMetrics =
         Boolean.parseBoolean(System.getProperty(ENABLE_BUILTIN_METRICS_PROP_KEY, "false"));
+    final String healthCheckPortStr = System.getProperty(HEALTH_CHECK_PORT_PROP_KEY);
+    HealthCheckServer healthCheckServer = null;
 
     if (databaseUri == null) {
       throw new IllegalArgumentException(
           "Spanner database URI not set. Please set it using -DdatabaseUri option.");
+    }
+
+    if (healthCheckPortStr != null) {
+      final int healthCheckPort = Integer.parseInt(healthCheckPortStr);
+      if (healthCheckPort < 0 || healthCheckPort > 65535) {
+        throw new IllegalArgumentException(
+            "Invalid health check port '" + healthCheckPort + "'. Must be between 0 and 65535");
+      }
+      healthCheckServer = new HealthCheckServer(inetAddress, healthCheckPort);
+    } else {
+      LOG.debug("Health check server is disabled.");
     }
 
     DatabaseName databaseName = DatabaseName.parse(databaseUri);
@@ -122,8 +171,8 @@ public class Launcher {
         numGrpcChannels,
         maxCommitDelayProperty,
         enableBuiltInMetrics);
-
-    adapter.start();
+    Launcher launcher = new Launcher(adapter, healthCheckServer);
+    launcher.launch();
 
     try {
       Thread.currentThread().join();
