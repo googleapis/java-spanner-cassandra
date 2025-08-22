@@ -30,6 +30,7 @@ import com.datastax.oss.protocol.internal.request.Batch;
 import com.datastax.oss.protocol.internal.request.Execute;
 import com.datastax.oss.protocol.internal.request.Prepare;
 import com.datastax.oss.protocol.internal.request.Query;
+import com.datastax.oss.protocol.internal.response.Error;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
@@ -68,6 +69,8 @@ final class DriverConnectionHandler implements Runnable {
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
+  private static final FrameCodec<ByteBuf> clientFrameCodec =
+      FrameCodec.defaultClient(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
   private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
@@ -169,6 +172,11 @@ final class DriverConnectionHandler implements Runnable {
                   prepareResult.getContext(),
                   streamId);
           // Now response holds the gRPC result, which might still be empty.
+          Frame frame = clientFrameCodec.decode(Unpooled.wrappedBuffer(response.toByteArray()));
+          if (frame.message instanceof Error) {
+            Error error = (Error) frame.message;
+            LOG.info("ERROR: {}", error.message);
+          }
         }
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.

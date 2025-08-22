@@ -21,12 +21,10 @@ package com.example.spanner.cassandra;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
-import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import com.google.cloud.spanner.adapter.SpannerCqlSession;
 import java.net.InetSocketAddress;
 import java.time.Duration;
-import java.util.Random;
 
 // This sample assumes your spanner database <my_db> contains a table <users>
 // with the following schema:
@@ -42,9 +40,9 @@ class QuickStartSample {
   public static void main(String[] args) {
 
     // TODO(developer): Replace these variables before running the sample.
-    final String projectId = "my-gcp-project";
-    final String instanceId = "my-spanner-instance";
-    final String databaseId = "my_db";
+    final String projectId = "span-cloud-testing";
+    final String instanceId = "c2sp";
+    final String databaseId = "xobni-derived";
 
     final String databaseUri =
         String.format("projects/%s/instances/%s/databases/%s", projectId, instanceId, databaseId);
@@ -54,7 +52,6 @@ class QuickStartSample {
             .setDatabaseUri(databaseUri) // Set spanner database URI.
             .addContactPoint(new InetSocketAddress("localhost", 9042))
             .withLocalDatacenter("datacenter1")
-            .withKeyspace(databaseId) // Keyspace name should be the same as spanner database name
             .withConfigLoader(
                 DriverConfigLoader.programmaticBuilder()
                     .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
@@ -63,29 +60,85 @@ class QuickStartSample {
                     .build())
             .build()) {
 
-      final int randomUserId = new Random().nextInt(Integer.MAX_VALUE);
+      PreparedStatement stmt1 =
+          session.prepare(
+              "SELECT mbr_guid FROM xobni_derived.user_config_by_bucket WHERE bucket = ?");
+      PreparedStatement stmt2 =
+          session.prepare(
+              "SELECT mbr_guid, migration_status FROM xobni_derived.user_config_by_bucket WHERE"
+                  + " bucket = ?;");
+      PreparedStatement stmt3 =
+          session.prepare(
+              "SELECT user_configuration FROM xobni_derived.user_config_by_bucket WHERE bucket = ?"
+                  + " AND mbr_guid = ?;");
+      PreparedStatement stmt4 =
+          session.prepare(
+              "SELECT user_configuration, onboard_status, migration_status FROM"
+                  + " xobni_derived.user_config_by_bucket WHERE bucket = ? AND mbr_guid = ?;");
+      PreparedStatement stmt5 =
+          session.prepare(
+              "SELECT mbr_guid, user_configuration, onboard_status, migration_status,"
+                  + " migration_note FROM xobni_derived.user_config_by_bucket WHERE bucket = ?;");
+      PreparedStatement stmt6 =
+          session.prepare(
+              "INSERT INTO xobni_derived.user_config_by_bucket (bucket, mbr_guid,"
+                  + " user_configuration) VALUES (?, ?, ?);");
+      PreparedStatement stmt7 =
+          session.prepare(
+              "INSERT INTO xobni_derived.user_config_by_bucket (bucket, mbr_guid,"
+                  + " user_configuration, onboard_status) VALUES (?, ?, ?, ?);");
+      PreparedStatement stmt8 =
+          session.prepare(
+              "INSERT INTO xobni_derived.user_config_by_bucket (bucket, mbr_guid, onboard_status)"
+                  + " VALUES (?, ?, ?);");
 
-      System.out.printf("Inserting user with ID: %d%n", randomUserId);
-
-      // INSERT data
-      session.execute(
-          "INSERT INTO users (id, active, username) VALUES (?, ?, ?)",
-          randomUserId,
-          true,
-          "John Doe");
-
-      System.out.printf("Successfully inserted user: %d%n", randomUserId);
-      System.out.printf("Querying user: %d%n", randomUserId);
-
-      // SELECT data
-      ResultSet rs =
-          session.execute("SELECT id, active, username FROM users WHERE id = ?", randomUserId);
-
-      // Get the first row from the result set
-      Row row = rs.one();
-
-      System.out.printf(
-          "%d %b %s%n", row.getInt("id"), row.getBoolean("active"), row.getString("username"));
+      PreparedStatement stmt9 =
+          session.prepare(
+              "DELETE FROM xobni_derived.user_config_by_bucket WHERE bucket = ? AND mbr_guid = ?;");
+      PreparedStatement stmt81 =
+          session.prepare(
+              "INSERT INTO xobni_derived.user_config_by_bucket (bucket, mbr_guid, migration_status)"
+                  + " VALUES (?, ?, ?);");
+      PreparedStatement stmt71 =
+          session.prepare(
+              "INSERT INTO xobni_derived.user_config_by_bucket (bucket, mbr_guid, migration_status,"
+                  + " migration_note) VALUES (?, ?, ?, ?);");
+      PreparedStatement stmt811 =
+          session.prepare(
+              "SELECT migration_status FROM xobni_derived.user_config_by_bucket WHERE bucket = ?"
+                  + " AND mbr_guid = ?;");
+      PreparedStatement stmt711 =
+          session.prepare(
+              "SELECT migration_status, migration_note FROM xobni_derived.user_config_by_bucket"
+                  + " WHERE bucket = ? AND mbr_guid = ?;");
+      PreparedStatement stmt8111 =
+          session.prepare(
+              "SELECT mbr_guid, contact_id, method, prose, message_count, first_endpoint,"
+                  + " first_message_id, first_observation, last_message_id, last_observation,"
+                  + " histogram FROM xobni_derived.relationship_history_cache WHERE mbr_guid = ?;");
+      PreparedStatement stmt522 =
+          session.prepare(
+              "SELECT mbr_guid, contact_id, method, prose, message_count, first_endpoint,"
+                  + " first_observation, last_observation, histogram, first_message_id,"
+                  + " last_message_id FROM xobni_derived.relationship_history_cache WHERE mbr_guid"
+                  + " = ? AND contact_id = ?;");
+      PreparedStatement stmt622 =
+          session.prepare(
+              "INSERT INTO xobni_derived.relationship_history_cache (mbr_guid, contact_id, method,"
+                  + " prose, message_count, first_endpoint, first_message_id, first_observation,"
+                  + " last_message_id, last_observation, histogram) VALUES (?, ?, ?, ?, ?, ?, ?, ?,"
+                  + " ?, ?, ?);");
+      PreparedStatement stmt722 =
+          session.prepare(
+              "DELETE FROM xobni_derived.relationship_history_cache WHERE mbr_guid = ? AND"
+                  + " contact_id = ?;");
+      PreparedStatement stmt822 =
+          session.prepare(
+              "DELETE FROM xobni_derived.relationship_history_cache WHERE mbr_guid = ?;");
+      PreparedStatement stmt8221 =
+          session.prepare(
+              "SELECT * FROM xobni_derived.user_ep_table_int_to_id WHERE mbr_guid = ? AND ep_int"
+                  + " IN ?;");
 
     } catch (Exception e) {
       e.printStackTrace();
