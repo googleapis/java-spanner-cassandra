@@ -117,19 +117,19 @@ public final class BuiltInMetricsProvider {
             .put(INSTANCE_ID_KEY.getKey(), instanceId)
             .put(LOCATION_ID_KEY.getKey(), detectClientLocation())
             .put("gcp.resource_type", BuiltInMetricsConstant.SPANNER_RESOURCE_TYPE);
-
     return attributesBuilder.build();
   }
 
   public Attributes createDefaultAttributes(String databaseId) {
-    AttributesBuilder defaultAttributesBuilder = Attributes.builder();
-    defaultAttributesBuilder.put(DATABASE_KEY.getKey(), databaseId);
-    defaultAttributesBuilder.put(
-        CLIENT_NAME_KEY.getKey(),
-        "spanner-cassandra-java/" + GaxProperties.getLibraryVersion(getClass()));
-    defaultAttributesBuilder.put(CLIENT_UID_KEY.getKey(), getDefaultTaskValue());
-    defaultAttributesBuilder.put(METHOD_KEY.getKey(), "Adapter.AdaptMessage");
-    defaultAttributesBuilder.put(STATUS_KEY.getKey(), "OK");
+    AttributesBuilder defaultAttributesBuilder =
+        Attributes.builder()
+            .put(DATABASE_KEY.getKey(), databaseId)
+            .put(
+                CLIENT_NAME_KEY.getKey(),
+                "spanner-cassandra-java/" + GaxProperties.getLibraryVersion(getClass()))
+            .put(CLIENT_UID_KEY.getKey(), getDefaultTaskValue())
+            .put(METHOD_KEY.getKey(), "Adapter.AdaptMessage")
+            .put(STATUS_KEY.getKey(), "OK");
     return defaultAttributesBuilder.build();
   }
 

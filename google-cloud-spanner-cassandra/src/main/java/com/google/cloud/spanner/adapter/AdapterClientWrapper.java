@@ -72,6 +72,9 @@ final class AdapterClientWrapper {
             .setName(sessionManager.getSession().getName())
             .setProtocol("cassandra")
             .putAllAttachments(attachments)
+            // It is safe to use UnsafeByteOperations to wrap the payload without copying, as the
+            // underlying `payload` byte array is not modified after this point. This avoids an
+            // unnecessary memory copy for every request, which is a performance optimization.
             .setPayload(UnsafeByteOperations.unsafeWrap(payload))
             .build();
 
