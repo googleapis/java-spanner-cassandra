@@ -73,8 +73,6 @@ public final class DriverConnectionHandlerTest {
   private AdapterClientWrapper mockAdapterClient;
   private Socket mockSocket;
   private ByteArrayOutputStream outputStream;
-  private static final Map<String, String> expectedAttributes =
-      ImmutableMap.of("method", "Adapter.AdaptMessage", "status", "OK");
 
   public DriverConnectionHandlerTest() {}
 
@@ -206,7 +204,7 @@ public final class DriverConnectionHandlerTest {
         .containsExactly("x-goog-spanner-route-to-leader", ImmutableList.of("true"));
     assertThat(attachmentsCaptor.getValue())
         .containsExactly(preparedQueryKey, "query", "max_commit_delay", "100");
-    verify(mockMetricsRecorder).recordOperationCount(1L, expectedAttributes);
+    verify(mockMetricsRecorder).recordOperationCount(1L);
   }
 
   @Test
@@ -249,7 +247,7 @@ public final class DriverConnectionHandlerTest {
         .sendGrpcRequest(any(), any(), contextCaptor.capture(), any(int.class));
     assertThat(contextCaptor.getValue().getExtraHeaders())
         .containsExactly("x-goog-spanner-route-to-leader", ImmutableList.of("true"));
-    verify(mockMetricsRecorder).recordOperationCount(1L, expectedAttributes);
+    verify(mockMetricsRecorder).recordOperationCount(1L);
   }
 
   @Test

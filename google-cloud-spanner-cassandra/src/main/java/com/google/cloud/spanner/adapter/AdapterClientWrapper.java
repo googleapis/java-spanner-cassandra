@@ -21,6 +21,7 @@ import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErro
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.api.gax.rpc.ServerStream;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.UnsafeByteOperations;
 import com.google.spanner.adapter.v1.AdaptMessageRequest;
 import com.google.spanner.adapter.v1.AdaptMessageResponse;
 import com.google.spanner.adapter.v1.AdapterClient;
@@ -71,7 +72,10 @@ final class AdapterClientWrapper {
             .setName(sessionManager.getSession().getName())
             .setProtocol("cassandra")
             .putAllAttachments(attachments)
-            .setPayload(ByteString.copyFrom(payload))
+            // It is safe to use UnsafeByteOperations to wrap the payload without copying, as the
+            // underlying `payload` byte array is not modified after this point. This avoids an
+            // unnecessary memory copy for every request, which is a performance optimization.
+            .setPayload(UnsafeByteOperations.unsafeWrap(payload))
             .build();
 
     List<ByteString> collectedPayloads = new ArrayList<>();

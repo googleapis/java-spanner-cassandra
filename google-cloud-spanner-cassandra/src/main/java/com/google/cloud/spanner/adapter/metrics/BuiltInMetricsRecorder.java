@@ -16,21 +16,18 @@ limitations under the License.
 package com.google.cloud.spanner.adapter.metrics;
 
 import com.google.api.gax.core.GaxProperties;
-import com.google.common.base.Preconditions;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.Meter;
-import java.util.Map;
 
 /** Implementation for recording built in metrics. */
 public final class BuiltInMetricsRecorder {
 
   private final LongCounter operationCountRecorder;
   private final DoubleHistogram operationLatencyRecorder;
-  private final Map<String, String> defaultAttr;
+  private final Attributes defaultAttr;
 
   /**
    * Creates the following instruments for the following metrics:
@@ -43,7 +40,7 @@ public final class BuiltInMetricsRecorder {
    * @param openTelemetry OpenTelemetry instance
    * @param defaultAttr Default attibutes
    */
-  public BuiltInMetricsRecorder(OpenTelemetry openTelemetry, Map<String, String> defaultAttr) {
+  public BuiltInMetricsRecorder(OpenTelemetry openTelemetry, Attributes defaultAttr) {
     Meter meter =
         openTelemetry
             .meterBuilder(BuiltInMetricsConstant.SPANNER_METER_NAME)
@@ -72,19 +69,11 @@ public final class BuiltInMetricsRecorder {
     this.defaultAttr = defaultAttr;
   }
 
-  public void recordOperationLatency(double operationLatency, Map<String, String> attributes) {
-    operationLatencyRecorder.record(operationLatency, toOtelAttributes(attributes));
+  public void recordOperationLatency(double operationLatency) {
+    operationLatencyRecorder.record(operationLatency, defaultAttr);
   }
 
-  public void recordOperationCount(long count, Map<String, String> attributes) {
-    operationCountRecorder.add(count, toOtelAttributes(attributes));
-  }
-
-  Attributes toOtelAttributes(Map<String, String> attributes) {
-    Preconditions.checkNotNull(attributes, "Attributes map cannot be null");
-    AttributesBuilder attributesBuilder = Attributes.builder();
-    attributes.forEach(attributesBuilder::put);
-    this.defaultAttr.forEach(attributesBuilder::put);
-    return attributesBuilder.build();
+  public void recordOperationCount(long count) {
+    operationCountRecorder.add(count, defaultAttr);
   }
 }

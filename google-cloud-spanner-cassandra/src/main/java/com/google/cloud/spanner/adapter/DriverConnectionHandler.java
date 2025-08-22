@@ -63,7 +63,6 @@ final class DriverConnectionHandler implements Runnable {
   private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
-  private static final String ADAPT_MESSAGE_METHOD = "Adapter.AdaptMessage";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
@@ -77,8 +76,6 @@ final class DriverConnectionHandler implements Runnable {
   private static final GrpcCallContext DEFAULT_CONTEXT = GrpcCallContext.createDefault();
   private static final Map<String, List<String>> ROUTE_TO_LEADER_HEADER_MAP =
       ImmutableMap.of(ROUTE_TO_LEADER_HEADER_KEY, Collections.singletonList("true"));
-  private static final Map<String, String> SUCCESS_METRIC_ATTRIBUTES =
-      ImmutableMap.of("method", ADAPT_MESSAGE_METHOD, "status", "OK");
   private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
       GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
   private static final byte[] EMPTY_BYTES = new byte[0];
@@ -188,8 +185,8 @@ final class DriverConnectionHandler implements Runnable {
       return;
     }
     final long latency = Duration.between(startTime, Instant.now()).toMillis();
-    metricsRecorder.recordOperationCount(1, SUCCESS_METRIC_ATTRIBUTES);
-    metricsRecorder.recordOperationLatency(latency, SUCCESS_METRIC_ATTRIBUTES);
+    metricsRecorder.recordOperationCount(1);
+    metricsRecorder.recordOperationLatency(latency);
   }
 
   private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)
