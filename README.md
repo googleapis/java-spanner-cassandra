@@ -155,11 +155,13 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
     -Dhost=127.0.0.1 \
     -Dport=9042 \
     -DnumGrpcChannels=4 \
+    -DhealthCheckPort=8080 \
     -jar path/to/your/spanner-cassandra-launcher.jar
     ```
 
     * Replace the value of `-DdatabaseUri` with your Spanner database URI.
     * You can omit `-Dhost` to use the default `0.0.0.0`, omit `-Dport` to use the default `9042`, and omit `-DnumGrpcChannels` to use the default `4`.
+    * `-DhealthCheckPort` is optional. If specified, a health check endpoint will be started on same IP address as that of the client on the specified port at url `/debug/health`. The health check endpoint will return HTTP status `200: OK` if the client is up and running, and `503: Service Unavailable` otherwise. The health check endpoint is NOT enabled by default.
 
 ## View and manage client-side metrics
 
