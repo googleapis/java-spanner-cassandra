@@ -82,8 +82,10 @@ final class DriverConnectionHandler implements Runnable {
   private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
       GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
   private static final byte[] EMPTY_BYTES = new byte[0];
-  private static final boolean LOG_SERVER_ERROR =
-      Boolean.parseBoolean(System.getenv("GOOGLE_SPANNER_LOG_SERVER_ERROR"));
+  private static final String ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS =
+      "GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS";
+  private static final boolean LOG_SERVER_ERRORS =
+      Boolean.parseBoolean(System.getenv(ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS));
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -169,7 +171,7 @@ final class DriverConnectionHandler implements Runnable {
                   prepareResult.getAttachments(),
                   prepareResult.getContext(),
                   streamId);
-          if (LOG_SERVER_ERROR) {
+          if (LOG_SERVER_ERRORS) {
             Frame frame = decodeClientFrame(response.toByteArray());
             if (frame.message instanceof Error) {
               Error error = (Error) frame.message;
