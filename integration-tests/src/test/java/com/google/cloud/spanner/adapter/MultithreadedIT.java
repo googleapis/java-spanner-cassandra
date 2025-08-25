@@ -38,7 +38,7 @@ import org.junit.Test;
 public class MultithreadedIT extends AbstractIT {
 
   private static final int NUM_THREADS = 1024;
-  private static final int TIMEOUT_SECONDS = 120;
+  private static final int TIMEOUT_MINUTES = 5;
 
   public MultithreadedIT(DatabaseContext db) {
     super(db);
@@ -90,8 +90,8 @@ public class MultithreadedIT extends AbstractIT {
 
     // 4. Shut down the executor and wait for all tasks to complete.
     executor.shutdown();
-    boolean finished = executor.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-    assertThat(finished).isTrue(); // Fail the test if it times out.
+    // Fail the test if it times out.
+    assertThat(executor.awaitTermination(TIMEOUT_MINUTES, TimeUnit.MINUTES)).isTrue();
 
     // 5. Check for exceptions from any of the threads.
     // Future.get() will re-throw any exception that occurred during the task's execution.

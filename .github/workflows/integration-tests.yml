@@ -29,6 +29,7 @@ jobs:
       env:
         JOB_TYPE: integration-spanner
         INTEGRATION_TEST_INSTANCE: ${{secrets.INTEGRATION_TEST_INSTANCE}}
+        GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS: true
   
   integration-cassandra:
     runs-on: ubuntu-latest
