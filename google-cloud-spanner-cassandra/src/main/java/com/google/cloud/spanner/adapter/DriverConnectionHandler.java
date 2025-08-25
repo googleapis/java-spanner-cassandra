@@ -85,7 +85,9 @@ final class DriverConnectionHandler implements Runnable {
   private static final String ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS =
       "GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS";
   private static final boolean LOG_SERVER_ERRORS =
-      Boolean.parseBoolean(System.getenv(ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS));
+      Boolean.parseBoolean(
+          System.getenv()
+              .getOrDefault(ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS, "false"));
 
   /**
    * Constructor for DriverConnectionHandler.
