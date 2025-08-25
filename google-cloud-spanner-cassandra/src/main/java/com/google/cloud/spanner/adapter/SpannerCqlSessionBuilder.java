@@ -51,7 +51,8 @@ public final class SpannerCqlSessionBuilder
   private static final String DEFAULT_HOST = "0.0.0.0";
   private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
   private static final int LARGEST_MAX_COMMIT_DELAY_MILLIS = 500;
-  private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
+  private static final String DEFAULT_SPANNER_ENDPOINT =
+      "staging-wrenchworks.sandbox.googleapis.com:443";
   private static final String ENV_VAR_SPANNER_ENDPOINT = "SPANNER_ENDPOINT";
 
   private InetAddress iNetAddress;

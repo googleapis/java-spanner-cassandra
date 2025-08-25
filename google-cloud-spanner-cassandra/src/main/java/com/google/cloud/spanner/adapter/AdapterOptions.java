@@ -25,7 +25,8 @@ import java.util.Optional;
 /** Options for creating the {@link Adapter}. */
 class AdapterOptions {
 
-  private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
+  private static final String DEFAULT_SPANNER_ENDPOINT =
+      "staging-wrenchworks.sandbox.googleapis.com:443";
   private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
 
   /** Builder class for creating an instance of {@link AdapterOptions}. */
