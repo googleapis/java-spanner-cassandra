@@ -29,6 +29,7 @@ import com.datastax.oss.protocol.internal.ProtocolConstants;
 import com.datastax.oss.protocol.internal.request.Batch;
 import com.datastax.oss.protocol.internal.request.Execute;
 import com.datastax.oss.protocol.internal.request.Query;
+import com.datastax.oss.protocol.internal.response.Error;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
@@ -66,6 +67,8 @@ final class DriverConnectionHandler implements Runnable {
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
+  private static final FrameCodec<ByteBuf> clientFrameCodec =
+      FrameCodec.defaultClient(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
   private final AdapterClientWrapper adapterClientWrapper;
   private final Optional<String> maxCommitDelayMillis;
@@ -79,6 +82,12 @@ final class DriverConnectionHandler implements Runnable {
   private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
       GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
   private static final byte[] EMPTY_BYTES = new byte[0];
+  private static final String ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS =
+      "GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS";
+  private static final boolean LOG_SERVER_ERRORS =
+      Boolean.parseBoolean(
+          System.getenv()
+              .getOrDefault(ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS, "false"));
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -164,7 +173,13 @@ final class DriverConnectionHandler implements Runnable {
                   prepareResult.getAttachments(),
                   prepareResult.getContext(),
                   streamId);
-          // Now response holds the gRPC result, which might still be empty.
+          if (LOG_SERVER_ERRORS) {
+            Frame frame = decodeClientFrame(response.toByteArray());
+            if (frame.message instanceof Error) {
+              Error error = (Error) frame.message;
+              LOG.info("ERROR: code: {}, message: {}", error.code, error.message);
+            }
+          }
         }
       } catch (RuntimeException e) {
         // 5. Handle any error during payload construction or attachment processing.
@@ -284,6 +299,13 @@ final class DriverConnectionHandler implements Runnable {
   private Frame decodeFrame(byte[] payload) {
     ByteBuf payloadBuf = Unpooled.wrappedBuffer(payload);
     Frame frame = serverFrameCodec.decode(payloadBuf);
+    payloadBuf.release();
+    return frame;
+  }
+
+  private Frame decodeClientFrame(byte[] payload) {
+    ByteBuf payloadBuf = Unpooled.wrappedBuffer(payload);
+    Frame frame = clientFrameCodec.decode(payloadBuf);
     payloadBuf.release();
     return frame;
   }
