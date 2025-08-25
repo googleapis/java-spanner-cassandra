@@ -27,13 +27,13 @@ import java.time.format.DateTimeFormatter;
 public abstract class DatabaseContext {
 
   protected static final DateTimeFormatter formatter =
-      DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
+      DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSSSSSSSS");
   private final String name;
   protected final String keyspace;
 
   public DatabaseContext(String name) {
     this.name = name;
-    keyspace = "java_it_test_" + LocalDateTime.now().format(formatter);
+    keyspace = "java_" + LocalDateTime.now().format(formatter);
   }
 
   @Override
