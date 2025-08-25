@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.4.0...v0.5.0) (2025-08-25)
+
+
+### Features
+
+* Add env var to log server errors ([#198](https://github.com/googleapis/java-spanner-cassandra/issues/198)) ([f06a242](https://github.com/googleapis/java-spanner-cassandra/commit/f06a24242675843e56aad1cc0ec43f3d6318309b))
+* Add health check endpoint ([#197](https://github.com/googleapis/java-spanner-cassandra/issues/197)) ([881137a](https://github.com/googleapis/java-spanner-cassandra/commit/881137a06aedeef3321bb75bd8b770374379de67))
+
+
+### Bug Fixes
+
+* Add missing setting for direct path enablement ([#145](https://github.com/googleapis/java-spanner-cassandra/issues/145)) ([5099d98](https://github.com/googleapis/java-spanner-cassandra/commit/5099d9893dbe160de15e09d35cc95be2839ecc71))
+* Attach appropriate stream_id for error response ([#149](https://github.com/googleapis/java-spanner-cassandra/issues/149)) ([54ba573](https://github.com/googleapis/java-spanner-cassandra/commit/54ba57305d659d52f007e0ce602ca9a5a3031ebc))
+* Correct method name ([#127](https://github.com/googleapis/java-spanner-cassandra/issues/127)) ([0a5fa64](https://github.com/googleapis/java-spanner-cassandra/commit/0a5fa64f9b172db49c126bce33246dee38df848c))
+* Fix lint ([#184](https://github.com/googleapis/java-spanner-cassandra/issues/184)) ([177b45c](https://github.com/googleapis/java-spanner-cassandra/commit/177b45cc9c6239c4592925e6c334e72502c304e0))
+
+
+### Performance Improvements
+
+* Add support for virtual threads ([#169](https://github.com/googleapis/java-spanner-cassandra/issues/169)) ([393ae0a](https://github.com/googleapis/java-spanner-cassandra/commit/393ae0a1a80c4790cddc1be6d265f4fd95960da6))
+* Directly write ByteString received from gRPC response to socket to avoid copies ([#174](https://github.com/googleapis/java-spanner-cassandra/issues/174)) ([8d5a2b7](https://github.com/googleapis/java-spanner-cassandra/commit/8d5a2b7f14b8f6c27dbfc53fecab25644f7857be))
+* Only decode bytes to frame for query, execute and batch messages ([#163](https://github.com/googleapis/java-spanner-cassandra/issues/163)) ([b0f279d](https://github.com/googleapis/java-spanner-cassandra/commit/b0f279d9b89c86e29210ff192b3ef85be9f0feba))
+* Small optimizations to reduce CPU overhead on hot paths ([#190](https://github.com/googleapis/java-spanner-cassandra/issues/190)) ([f0d9777](https://github.com/googleapis/java-spanner-cassandra/commit/f0d9777426241fbc35e2051432e41bdeb8ab786b))
+
+
+### Documentation
+
+* Add cqlsh instructions ([#187](https://github.com/googleapis/java-spanner-cassandra/issues/187)) ([bb8dec9](https://github.com/googleapis/java-spanner-cassandra/commit/bb8dec9ab3c95f7e793b82a82f94521732ef4995))
+* Add YCSB doc ([#173](https://github.com/googleapis/java-spanner-cassandra/issues/173)) ([e2703b4](https://github.com/googleapis/java-spanner-cassandra/commit/e2703b47f7ec22c7e1c6fe5003496f633210bf5f))
+* View and manage client-side metrics ([#188](https://github.com/googleapis/java-spanner-cassandra/issues/188)) ([3d2b44b](https://github.com/googleapis/java-spanner-cassandra/commit/3d2b44b666f530fd9fdfbd1e3cc4aacad3811d40))
+
 ## [0.4.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.3.0...v0.4.0) (2025-06-29)
 
 
