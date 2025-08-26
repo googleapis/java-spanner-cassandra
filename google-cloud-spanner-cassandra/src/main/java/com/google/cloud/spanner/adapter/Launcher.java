@@ -87,7 +87,9 @@ public class Launcher {
   }
 
   void launch() {
-    healthCheckServer.start();
+    if (healthCheckServer != null) {
+      healthCheckServer.start();
+    }
     adapter.start();
 
     Runtime.getRuntime()
