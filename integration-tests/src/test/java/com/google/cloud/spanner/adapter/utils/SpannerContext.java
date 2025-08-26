@@ -122,6 +122,8 @@ public class SpannerContext extends DatabaseContext {
                     .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofMinutes(5))
                     .withDuration(
                         DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofMinutes(5))
+                    .withDuration(
+                        DefaultDriverOption.CONTROL_CONNECTION_TIMEOUT, Duration.ofMinutes(5))
                     .withDuration(DefaultDriverOption.HEARTBEAT_TIMEOUT, Duration.ofMinutes(1))
                     .build())
             .build();
