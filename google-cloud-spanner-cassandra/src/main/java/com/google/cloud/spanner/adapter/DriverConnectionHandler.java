@@ -71,7 +71,15 @@ final class DriverConnectionHandler implements Runnable {
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
-  private static FrameCodec<ByteBuf> serverFrameCodec;
+  private static final FrameCodec<ByteBuf> serverFrameCodec =
+      new FrameCodec<>(
+          new ByteBufPrimitiveCodec(byteBufAllocator),
+          Compressor.none(),
+          new ProtocolV3ServerCodecs(),
+          new ProtocolV4ServerCodecs(),
+          new ProtocolV5ServerCodecs(),
+          new ProtocolV6ServerCodecs(),
+          new DseProtocolV2ServerCodecs());
   private static final FrameCodec<ByteBuf> clientFrameCodec =
       FrameCodec.defaultClient(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
@@ -114,15 +122,6 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       this.maxCommitDelayMillis = Optional.empty();
     }
-    serverFrameCodec =
-        new FrameCodec<>(
-            new ByteBufPrimitiveCodec(byteBufAllocator),
-            Compressor.none(),
-            new ProtocolV3ServerCodecs(),
-            new ProtocolV4ServerCodecs(),
-            new ProtocolV5ServerCodecs(),
-            new ProtocolV6ServerCodecs(),
-            new DseProtocolV2ServerCodecs());
   }
 
   @VisibleForTesting
