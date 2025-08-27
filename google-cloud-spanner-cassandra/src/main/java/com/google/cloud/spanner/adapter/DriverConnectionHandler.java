@@ -71,7 +71,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
-  private static final FrameCodec<ByteBuf> serverFrameCodec = customeServerCodec(byteBufAllocator);
+  private static final FrameCodec<ByteBuf> serverFrameCodec = customServerCodec(byteBufAllocator);
   private static final FrameCodec<ByteBuf> clientFrameCodec =
       FrameCodec.defaultClient(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
@@ -412,7 +412,7 @@ final class DriverConnectionHandler implements Runnable {
     return PREPARED_QUERY_ID_ATTACHMENT_PREFIX + new String(queryId, StandardCharsets.UTF_8);
   }
 
-  private static FrameCodec<ByteBuf> customeServerCodec(ByteBufAllocator byteBufAllocator) {
+  private static FrameCodec<ByteBuf> customServerCodec(ByteBufAllocator byteBufAllocator) {
     return new FrameCodec<>(
         new ByteBufPrimitiveCodec(byteBufAllocator),
         Compressor.none(),
