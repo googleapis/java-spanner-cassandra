@@ -20,17 +20,23 @@ import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErro
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
 import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
 
+import com.datastax.dse.protocol.internal.DseProtocolV2ServerCodecs;
 import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
 import com.datastax.oss.driver.shaded.guava.common.annotations.VisibleForTesting;
 import com.datastax.oss.protocol.internal.Compressor;
 import com.datastax.oss.protocol.internal.Frame;
 import com.datastax.oss.protocol.internal.FrameCodec;
 import com.datastax.oss.protocol.internal.ProtocolConstants;
+import com.datastax.oss.protocol.internal.ProtocolV3ServerCodecs;
+import com.datastax.oss.protocol.internal.ProtocolV4ServerCodecs;
+import com.datastax.oss.protocol.internal.ProtocolV5ServerCodecs;
+import com.datastax.oss.protocol.internal.ProtocolV6ServerCodecs;
 import com.datastax.oss.protocol.internal.request.Batch;
 import com.datastax.oss.protocol.internal.request.Execute;
 import com.datastax.oss.protocol.internal.request.Prepare;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.datastax.oss.protocol.internal.response.Error;
+import com.datastax.oss.protocol.internal.response.error.Unprepared;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
@@ -67,8 +73,7 @@ final class DriverConnectionHandler implements Runnable {
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
   private static final String ADAPT_MESSAGE_METHOD = "Adapter.AdaptMessage";
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
-  private static final FrameCodec<ByteBuf> serverFrameCodec =
-      FrameCodec.defaultServer(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
+  private static FrameCodec<ByteBuf> serverFrameCodec;
   private static final FrameCodec<ByteBuf> clientFrameCodec =
       FrameCodec.defaultClient(new ByteBufPrimitiveCodec(byteBufAllocator), Compressor.none());
   private final Socket socket;
@@ -107,6 +112,15 @@ final class DriverConnectionHandler implements Runnable {
     } else {
       this.maxCommitDelayMillis = Optional.empty();
     }
+    serverFrameCodec =
+        new FrameCodec<>(
+            new ByteBufPrimitiveCodec(byteBufAllocator),
+            Compressor.none(),
+            new ProtocolV3ServerCodecs(),
+            new ProtocolV4ServerCodecs(),
+            new ProtocolV5ServerCodecs(),
+            new ProtocolV6ServerCodecs(),
+            new DseProtocolV2ServerCodecs());
   }
 
   @VisibleForTesting
@@ -172,10 +186,15 @@ final class DriverConnectionHandler implements Runnable {
                   prepareResult.getContext(),
                   streamId);
           // Now response holds the gRPC result, which might still be empty.
-          Frame frame = clientFrameCodec.decode(Unpooled.wrappedBuffer(response.toByteArray()));
-          if (frame.message instanceof Error) {
-            Error error = (Error) frame.message;
-            LOG.info("ERROR: {}", error.message);
+          try {
+            Frame frame = decodeClientFrame(response.toByteArray());
+            if (frame.message instanceof Error && !(frame.message instanceof Unprepared)) {
+              Error error = (Error) frame.message;
+              LOG.info("ERROR: code: {}, message: {}", error.code, error.message);
+            }
+          } catch (RuntimeException e) {
+            // Do nothing if we are not able to decode the message as the driver will throw error
+            // on its side.
           }
         }
       } catch (RuntimeException e) {
@@ -296,6 +315,13 @@ final class DriverConnectionHandler implements Runnable {
   private Frame decodeFrame(byte[] payload) {
     ByteBuf payloadBuf = Unpooled.wrappedBuffer(payload);
     Frame frame = serverFrameCodec.decode(payloadBuf);
+    payloadBuf.release();
+    return frame;
+  }
+
+  private Frame decodeClientFrame(byte[] payload) {
+    ByteBuf payloadBuf = Unpooled.wrappedBuffer(payload);
+    Frame frame = clientFrameCodec.decode(payloadBuf);
     payloadBuf.release();
     return frame;
   }
