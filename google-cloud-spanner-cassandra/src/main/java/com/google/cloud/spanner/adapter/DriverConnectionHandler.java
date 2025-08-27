@@ -179,7 +179,8 @@ final class DriverConnectionHandler implements Runnable {
               Frame frame = decodeClientFrame(response.toByteArray());
               if (frame.message instanceof Error && !(frame.message instanceof Unprepared)) {
                 Error error = (Error) frame.message;
-                LOG.info("ERROR: code: {}, message: {}", error.code, error.message);
+                LOG.error(
+                    "Error executing request -> code: {}, message: {}", error.code, error.message);
               }
             } catch (RuntimeException e) {
               // Do nothing if we are not able to decode the message as the driver will throw error
