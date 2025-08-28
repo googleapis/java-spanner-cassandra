@@ -34,11 +34,11 @@ public class YamlConfigLoaderTest {
       UserConfigs userConfigs = YamlConfigLoader.load(inputStream);
 
       assertThat(userConfigs).isNotNull();
-      assertThat(userConfigs.getClientConfigs()).isNotNull();
-      assertThat(userConfigs.getClientConfigs().getSpannerEndpoint())
+      assertThat(userConfigs.getGlobalClientConfigs()).isNotNull();
+      assertThat(userConfigs.getGlobalClientConfigs().getSpannerEndpoint())
           .isEqualTo("spanner.googleapis.com:443");
-      assertThat(userConfigs.getClientConfigs().getEnableBuiltInMetrics()).isTrue();
-      assertThat(userConfigs.getClientConfigs().getHealthCheckEndpoint())
+      assertThat(userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics()).isTrue();
+      assertThat(userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint())
           .isEqualTo("127.0.0.1:8080");
 
       List<ListenerConfigs> listeners = userConfigs.getListeners();
@@ -48,7 +48,7 @@ public class YamlConfigLoaderTest {
       // Verify listener_1
       ListenerConfigs listener1 = listeners.get(0);
       assertThat(listener1.getName()).isEqualTo("listener_1");
-      assertThat(listener1.getSpannerEndpoint()).isEqualTo("spanner2.googleapis.com:443");
+      
       assertThat(listener1.getHost()).isEqualTo("127.0.0.1");
       assertThat(listener1.getPort()).isEqualTo(9042);
       assertThat(listener1.getEnableBuiltInMetrics()).isFalse();
@@ -66,7 +66,7 @@ public class YamlConfigLoaderTest {
       // Verify listener_2
       ListenerConfigs listener2 = listeners.get(1);
       assertThat(listener2.getName()).isEqualTo("listener_2");
-      assertThat(listener2.getSpannerEndpoint()).isNull();
+      
       assertThat(listener2.getHost()).isEqualTo("127.0.0.2");
       assertThat(listener2.getPort()).isEqualTo(9043);
       assertThat(listener2.getEnableBuiltInMetrics()).isNull();
@@ -113,7 +113,7 @@ public class YamlConfigLoaderTest {
       UserConfigs userConfigs = YamlConfigLoader.load(inputStream);
 
       assertThat(userConfigs).isNotNull();
-      assertThat(userConfigs.getClientConfigs()).isNull();
+      assertThat(userConfigs.getGlobalClientConfigs()).isNull();
 
       List<ListenerConfigs> listeners = userConfigs.getListeners();
       assertThat(listeners).isNotNull();
@@ -149,7 +149,7 @@ public class YamlConfigLoaderTest {
 
       assertThat(userConfigs).isNotNull();
       assertThat(userConfigs.getListeners()).isNull();
-      assertThat(userConfigs.getClientConfigs()).isNotNull();
+      assertThat(userConfigs.getGlobalClientConfigs()).isNotNull();
     }
   }
 }

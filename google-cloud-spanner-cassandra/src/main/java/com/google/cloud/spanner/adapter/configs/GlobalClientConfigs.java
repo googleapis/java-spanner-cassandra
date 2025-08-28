@@ -19,23 +19,23 @@ package com.google.cloud.spanner.adapter.configs;
 import java.util.Map;
 
 /** Represents the global client configurations loaded from a YAML file. */
-public class ClientConfigs {
+public class GlobalClientConfigs {
   private final String spannerEndpoint;
   private final Boolean enableBuiltInMetrics;
   private final String healthCheckEndpoint;
 
-  public ClientConfigs(
+  public GlobalClientConfigs(
       String spannerEndpoint, Boolean enableBuiltInMetrics, String healthCheckEndpoint) {
     this.spannerEndpoint = spannerEndpoint;
     this.enableBuiltInMetrics = enableBuiltInMetrics;
     this.healthCheckEndpoint = healthCheckEndpoint;
   }
 
-  public static ClientConfigs fromMap(Map<String, Object> yamlMap) {
+  public static GlobalClientConfigs fromMap(Map<String, Object> yamlMap) {
     String spannerEndpoint = (String) yamlMap.get("spannerEndpoint");
     Boolean enableBuiltInMetrics = (Boolean) yamlMap.get("enableBuiltInMetrics");
     String healthCheckEndpoint = (String) yamlMap.get("healthCheckEndpoint");
-    return new ClientConfigs(spannerEndpoint, enableBuiltInMetrics, healthCheckEndpoint);
+    return new GlobalClientConfigs(spannerEndpoint, enableBuiltInMetrics, healthCheckEndpoint);
   }
 
   public String getSpannerEndpoint() {

@@ -21,7 +21,7 @@ import java.util.Map;
 /** Represents the configuration for a single listener from a YAML file. */
 public class ListenerConfigs {
   private final String name;
-  private final String spannerEndpoint;
+  
   private final String host;
   private final Integer port;
   private final SpannerConfigs spanner;
@@ -29,13 +29,11 @@ public class ListenerConfigs {
 
   public ListenerConfigs(
       String name,
-      String spannerEndpoint,
       String host,
       Integer port,
       SpannerConfigs spanner,
       Boolean enableBuiltInMetrics) {
     this.name = name;
-    this.spannerEndpoint = spannerEndpoint;
     this.host = host;
     this.port = port;
     this.spanner = spanner;
@@ -44,7 +42,6 @@ public class ListenerConfigs {
 
   public static ListenerConfigs fromMap(Map<String, Object> yamlMap) {
     String name = (String) yamlMap.get("name");
-    String spannerEndpoint = (String) yamlMap.get("spannerEndpoint");
     String host = (String) yamlMap.get("host");
     Integer port = (Integer) yamlMap.get("port");
     Boolean enableBuiltInMetrics = (Boolean) yamlMap.get("enableBuiltInMetrics");
@@ -56,16 +53,14 @@ public class ListenerConfigs {
       spanner = SpannerConfigs.fromMap(spannerMap);
     }
 
-    return new ListenerConfigs(name, spannerEndpoint, host, port, spanner, enableBuiltInMetrics);
+    return new ListenerConfigs(name, host, port, spanner, enableBuiltInMetrics);
   }
 
   public String getName() {
     return name;
   }
 
-  public String getSpannerEndpoint() {
-    return spannerEndpoint;
-  }
+  
 
   public String getHost() {
     return host;

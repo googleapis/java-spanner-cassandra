@@ -50,11 +50,12 @@ public class YamlConfigLoader {
     if (yamlMap == null) {
       return new UserConfigs(null, null);
     }
-    ClientConfigs clientConfigs = null;
-    if (yamlMap.containsKey("clientConfigs")) {
+    GlobalClientConfigs globalClientConfigs = null;
+    if (yamlMap.containsKey("globalClientConfigs")) {
       @SuppressWarnings("unchecked")
-      Map<String, Object> clientConfigsMap = (Map<String, Object>) yamlMap.get("clientConfigs");
-      clientConfigs = ClientConfigs.fromMap(clientConfigsMap);
+      Map<String, Object> globalClientConfigsMap =
+          (Map<String, Object>) yamlMap.get("globalClientConfigs");
+      globalClientConfigs = GlobalClientConfigs.fromMap(globalClientConfigsMap);
     }
 
     List<ListenerConfigs> listeners = null;
@@ -66,6 +67,6 @@ public class YamlConfigLoader {
           listenersListMap.stream().map(ListenerConfigs::fromMap).collect(Collectors.toList());
     }
 
-    return new UserConfigs(clientConfigs, listeners);
+    return new UserConfigs(globalClientConfigs, listeners);
   }
 }

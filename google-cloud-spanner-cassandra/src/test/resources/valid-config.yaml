@@ -1,5 +1,5 @@
 # Global client configuration
-clientConfigs:
+globalClientConfigs:
   spannerEndpoint: "spanner.googleapis.com:443"
   enableBuiltInMetrics: true
   healthCheckEndpoint: "127.0.0.1:8080"
@@ -8,7 +8,7 @@ clientConfigs:
 listeners:
   - # Configuration for listener_1
     name: "listener_1"
-    spannerEndpoint: "spanner2.googleapis.com:443"
+    
     host: "127.0.0.1"
     port: 9042
     enableBuiltInMetrics: false
