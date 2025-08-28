@@ -35,7 +35,6 @@ public class YamlConfigLoader {
    *
    * @param inputStream The input stream containing the YAML data.
    * @return A {@link UserConfigs} object representing the parsed configuration.
-   * @throws IOException If an error occurs while reading or parsing the YAML content.
    */
   public static UserConfigs load(InputStream inputStream) {
     Yaml yaml = new Yaml();

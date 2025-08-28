@@ -48,7 +48,7 @@ public class YamlConfigLoaderTest {
       // Verify listener_1
       ListenerConfigs listener1 = listeners.get(0);
       assertThat(listener1.getName()).isEqualTo("listener_1");
-      
+
       assertThat(listener1.getHost()).isEqualTo("127.0.0.1");
       assertThat(listener1.getPort()).isEqualTo(9042);
       assertThat(listener1.getEnableBuiltInMetrics()).isFalse();
@@ -66,7 +66,7 @@ public class YamlConfigLoaderTest {
       // Verify listener_2
       ListenerConfigs listener2 = listeners.get(1);
       assertThat(listener2.getName()).isEqualTo("listener_2");
-      
+
       assertThat(listener2.getHost()).isEqualTo("127.0.0.2");
       assertThat(listener2.getPort()).isEqualTo(9043);
       assertThat(listener2.getEnableBuiltInMetrics()).isNull();
