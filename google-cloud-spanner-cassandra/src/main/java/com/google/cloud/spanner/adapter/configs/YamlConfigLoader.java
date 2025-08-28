@@ -16,7 +16,6 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter.configs;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
