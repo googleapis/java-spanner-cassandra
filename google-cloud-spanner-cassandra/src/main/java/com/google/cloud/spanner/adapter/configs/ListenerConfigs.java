@@ -21,7 +21,7 @@ import java.util.Map;
 /** Represents the configuration for a single listener from a YAML file. */
 public class ListenerConfigs {
   private final String name;
-  
+
   private final String host;
   private final Integer port;
   private final SpannerConfigs spanner;
@@ -59,8 +59,6 @@ public class ListenerConfigs {
   public String getName() {
     return name;
   }
-
-  
 
   public String getHost() {
     return host;
