@@ -25,7 +25,6 @@ import com.datastax.oss.driver.api.core.servererrors.ReadFailureException;
 import com.datastax.oss.driver.api.core.servererrors.WriteFailureException;
 import com.datastax.oss.driver.api.core.servererrors.WriteType;
 import com.datastax.oss.driver.api.core.session.Request;
-import com.datastax.oss.driver.internal.core.retry.DefaultRetryPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +33,7 @@ public final class SpannerCqlRetryPolicy implements RetryPolicy {
 
   private static final Logger LOG = LoggerFactory.getLogger(SpannerCqlRetryPolicy.class);
 
-  private static final int MAX_RETRIES = 10;
+  private static final int DEFAULT_MAX_RETRY_COUNT = 5;
 
   private static final String RETRYING_ON_READ_TIMEOUT =
       "[{}] Retrying on read timeout (retries: {})";
@@ -50,16 +49,14 @@ public final class SpannerCqlRetryPolicy implements RetryPolicy {
 
   public SpannerCqlRetryPolicy(DriverContext context, String profileName) {
     this.logPrefix = (context != null ? context.getSessionName() : null) + "|" + profileName;
-    new DefaultRetryPolicy(context, profileName);
   }
 
   /**
    * {@inheritDoc}
    *
-   * <p>This implementation retries up to 10 times.
+   * <p>This implementation retries up to 5 times.
    */
   @Override
-  @Deprecated
   public RetryDecision onReadTimeout(
       Request request,
       ConsistencyLevel cl,
@@ -68,23 +65,15 @@ public final class SpannerCqlRetryPolicy implements RetryPolicy {
       boolean dataPresent,
       int retryCount) {
 
-    RetryDecision decision =
-        (retryCount < MAX_RETRIES) ? RetryDecision.RETRY_SAME : RetryDecision.RETHROW;
-
-    if (decision == RetryDecision.RETRY_SAME && LOG.isTraceEnabled()) {
-      LOG.trace(RETRYING_ON_READ_TIMEOUT, logPrefix, retryCount);
-    }
-
-    return decision;
+    return retryOrRethrow(retryCount, RETRYING_ON_READ_TIMEOUT);
   }
 
   /**
    * {@inheritDoc}
    *
-   * <p>This implementation retries up to 10 times.
+   * <p>This implementation retries up to 5 times.
    */
   @Override
-  @Deprecated
   public RetryDecision onWriteTimeout(
       Request request,
       ConsistencyLevel cl,
@@ -92,80 +81,55 @@ public final class SpannerCqlRetryPolicy implements RetryPolicy {
       int blockFor,
       int received,
       int retryCount) {
-
-    RetryDecision decision =
-        (retryCount < MAX_RETRIES) ? RetryDecision.RETRY_SAME : RetryDecision.RETHROW;
-
-    if (decision == RetryDecision.RETRY_SAME && LOG.isTraceEnabled()) {
-      LOG.trace(RETRYING_ON_WRITE_TIMEOUT, logPrefix, retryCount);
-    }
-    return decision;
+    return retryOrRethrow(retryCount, RETRYING_ON_WRITE_TIMEOUT);
   }
 
   /**
    * {@inheritDoc}
    *
-   * <p>This implementation retries up to 10 times.
+   * <p>This implementation retries up to 5 times.
    */
   @Override
-  @Deprecated
   public RetryDecision onUnavailable(
       Request request, ConsistencyLevel cl, int required, int alive, int retryCount) {
-
-    RetryDecision decision =
-        (retryCount < MAX_RETRIES) ? RetryDecision.RETRY_SAME : RetryDecision.RETHROW;
-
-    if (decision == RetryDecision.RETRY_SAME && LOG.isTraceEnabled()) {
-      LOG.trace(RETRYING_ON_UNAVAILABLE, logPrefix, retryCount);
-    }
-
-    return decision;
+    return retryOrRethrow(retryCount, RETRYING_ON_UNAVAILABLE);
   }
 
   /**
    * {@inheritDoc}
    *
-   * <p>This implementation retries up to 10 times.
+   * <p>This implementation retries up to 5 times.
    */
   @Override
-  @Deprecated
   public RetryDecision onRequestAborted(Request request, Throwable error, int retryCount) {
-
-    RetryDecision decision =
-        (retryCount < MAX_RETRIES) ? RetryDecision.RETRY_SAME : RetryDecision.RETHROW;
-
-    if (decision == RetryDecision.RETRY_SAME && LOG.isTraceEnabled()) {
-      LOG.trace(RETRYING_ON_ABORTED, logPrefix, retryCount, error);
-    }
-
-    return decision;
+    return retryOrRethrow(retryCount, RETRYING_ON_ABORTED);
   }
 
   /**
    * {@inheritDoc}
    *
-   * <p>This implementation retries up to 10 times.
+   * <p>This implementation retries up to 5 times.
    */
   @Override
-  @Deprecated
   public RetryDecision onErrorResponse(
       Request request, CoordinatorException error, int retryCount) {
-    RetryDecision decision;
     if (error instanceof ReadFailureException || error instanceof WriteFailureException) {
-      decision = RetryDecision.RETHROW;
-    } else {
-      decision = (retryCount < MAX_RETRIES) ? RetryDecision.RETRY_SAME : RetryDecision.RETHROW;
+      return RetryDecision.RETHROW;
     }
-
-    if (decision == RetryDecision.RETRY_SAME && LOG.isTraceEnabled()) {
-      LOG.trace(RETRYING_ON_ERROR, logPrefix, retryCount, error);
-    }
-
-    return decision;
+    return retryOrRethrow(retryCount, RETRYING_ON_ERROR);
   }
 
   @Override
   public void close() {
     // nothing to do
+  }
+
+  private RetryDecision retryOrRethrow(int retryCount, String error_msg) {
+    final RetryDecision decision =
+        (retryCount < DEFAULT_MAX_RETRY_COUNT) ? RetryDecision.RETRY_SAME : RetryDecision.RETHROW;
+    if (decision == RetryDecision.RETRY_SAME && LOG.isTraceEnabled()) {
+      LOG.trace(error_msg, logPrefix, retryCount);
+    }
+    return decision;
   }
 }

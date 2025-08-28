@@ -41,7 +41,7 @@ import org.mockito.MockitoAnnotations;
 public class SpannerCqlRetryPolicyTest {
 
   private static final String PROFILE_NAME = "default";
-  private static final int MAX_RETRIES = 10;
+  private static final int MAX_RETRIES = 5;
 
   @Mock private DriverContext mockContext;
   @Mock private Request mockRequest;
@@ -54,7 +54,7 @@ public class SpannerCqlRetryPolicyTest {
 
   @Parameters(name = "retryCount: {0}")
   public static Collection<Object[]> data() {
-    return Arrays.asList(new Object[][] {{0}, {1}, {9}});
+    return Arrays.asList(new Object[][] {{0}, {1}, {4}});
   }
 
   public SpannerCqlRetryPolicyTest(int retryCount) {
