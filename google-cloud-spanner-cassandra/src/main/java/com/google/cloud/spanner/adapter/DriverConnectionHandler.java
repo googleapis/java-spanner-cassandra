@@ -35,6 +35,7 @@ import com.datastax.oss.protocol.internal.request.Batch;
 import com.datastax.oss.protocol.internal.request.Execute;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.datastax.oss.protocol.internal.response.Error;
+import com.datastax.oss.protocol.internal.response.Supported;
 import com.datastax.oss.protocol.internal.response.error.Unprepared;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
@@ -93,6 +94,11 @@ final class DriverConnectionHandler implements Runnable {
       Boolean.parseBoolean(
           System.getenv()
               .getOrDefault(ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS, "false"));
+  private static final Supported SUPPORTED_MESSAGE =
+      new Supported(
+          ImmutableMap.of(
+              "CQL_VERSION", Collections.singletonList("3.0.0"),
+              "COMPRESSION", Collections.emptyList()));
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -163,6 +169,8 @@ final class DriverConnectionHandler implements Runnable {
         if (ctx.payload.length == 0) {
           break; // Break out of the loop gracefully in case of EOF
         }
+
+        if (ctx.opCode == ProtocolConstants.Opcode.OPTIONS) {}
 
         // 3. Prepare the payload.
         PreparePayloadResult prepareResult = preparePayload(ctx);
