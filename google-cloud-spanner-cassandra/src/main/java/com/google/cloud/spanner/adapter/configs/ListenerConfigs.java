@@ -25,26 +25,18 @@ public class ListenerConfigs {
   private final String host;
   private final Integer port;
   private final SpannerConfigs spanner;
-  private final Boolean enableBuiltInMetrics;
 
-  public ListenerConfigs(
-      String name,
-      String host,
-      Integer port,
-      SpannerConfigs spanner,
-      Boolean enableBuiltInMetrics) {
+  public ListenerConfigs(String name, String host, Integer port, SpannerConfigs spanner) {
     this.name = name;
     this.host = host;
     this.port = port;
     this.spanner = spanner;
-    this.enableBuiltInMetrics = enableBuiltInMetrics;
   }
 
   public static ListenerConfigs fromMap(Map<String, Object> yamlMap) {
     String name = (String) yamlMap.get("name");
     String host = (String) yamlMap.get("host");
     Integer port = (Integer) yamlMap.get("port");
-    Boolean enableBuiltInMetrics = (Boolean) yamlMap.get("enableBuiltInMetrics");
 
     SpannerConfigs spanner = null;
     if (yamlMap.containsKey("spanner")) {
@@ -53,7 +45,7 @@ public class ListenerConfigs {
       spanner = SpannerConfigs.fromMap(spannerMap);
     }
 
-    return new ListenerConfigs(name, host, port, spanner, enableBuiltInMetrics);
+    return new ListenerConfigs(name, host, port, spanner);
   }
 
   public String getName() {
@@ -70,9 +62,5 @@ public class ListenerConfigs {
 
   public SpannerConfigs getSpanner() {
     return spanner;
-  }
-
-  public Boolean getEnableBuiltInMetrics() {
-    return enableBuiltInMetrics;
   }
 }
