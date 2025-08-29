@@ -18,9 +18,7 @@ package com.google.cloud.spanner.adapter.configs;
 
 import java.util.Map;
 
-/**
- * Holds configurations for Spanner session management.
- */
+/** Holds configurations for Spanner session management. */
 public class SessionConfigs {
   private final Integer numGrpcChannels;
 

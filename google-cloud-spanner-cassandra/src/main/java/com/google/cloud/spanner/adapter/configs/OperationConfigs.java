@@ -18,9 +18,7 @@ package com.google.cloud.spanner.adapter.configs;
 
 import java.util.Map;
 
-/**
- * Holds configurations for Spanner operations.
- */
+/** Holds configurations for Spanner operations. */
 public class OperationConfigs {
   private final Integer maxCommitDelayMillis;
 
