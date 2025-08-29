@@ -1,0 +1,8 @@
+# This file contains a syntax error for testing purposes.
+listeners:
+  - name: "listener_1"
+    port: "9042"
+    spanner:
+      databaseUri: "projects/my-project/instances/my-instance/databases/my-database"
+# Missing a closing brace and has improper indentation.
+listeners

@@ -1,0 +1,3 @@
+# This file is missing the listeners key.
+globalClientConfigs:
+  spannerEndpoint: "spanner.googleapis.com:443"

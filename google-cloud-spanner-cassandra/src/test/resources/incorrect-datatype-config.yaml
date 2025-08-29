@@ -1,0 +1,7 @@
+# This file contains an incorrect data type for a key.
+globalClientConfigs:
+  spannerEndpoint: 12345
+listeners:
+  - name: "listener_1"
+    spanner:
+      databaseUri: "projects/my-project/instances/my-instance/databases/my-database"

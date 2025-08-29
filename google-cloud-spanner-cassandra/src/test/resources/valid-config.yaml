@@ -1,0 +1,26 @@
+# Global client configuration
+globalClientConfigs:
+  spannerEndpoint: "spanner.googleapis.com:443"
+  enableBuiltInMetrics: true
+  healthCheckEndpoint: "127.0.0.1:8080"
+
+# List of all listeners
+listeners:
+  - # Configuration for listener_1
+    name: "listener_1"
+    host: "127.0.0.1"
+    port: 9042
+    spanner:
+      databaseUri: "projects/my-project/instances/my-instance/databases/my-database"
+      session:
+        numGrpcChannels: 4
+      operation:
+        maxCommitDelayMillis: 100
+  - # Configuration for listener_2
+    name: "listener_2"
+    host: "127.0.0.2"
+    port: 9043
+    spanner:
+      databaseUri: "projects/my-project/instances/my-instance/databases/my-database-2"
+      session:
+        numGrpcChannels: 8

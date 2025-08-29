@@ -1,0 +1,5 @@
+# This file demonstrates a minimal configuration with only required fields.
+listeners:
+  - name: "listener_1"
+    spanner:
+      databaseUri: "test"
