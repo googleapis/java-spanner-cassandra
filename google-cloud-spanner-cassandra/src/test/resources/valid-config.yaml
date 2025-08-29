@@ -8,7 +8,6 @@ globalClientConfigs:
 listeners:
   - # Configuration for listener_1
     name: "listener_1"
-    
     host: "127.0.0.1"
     port: 9042
     spanner:
