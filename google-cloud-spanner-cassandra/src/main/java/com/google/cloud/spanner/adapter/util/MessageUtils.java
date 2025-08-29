@@ -20,10 +20,13 @@ import com.datastax.oss.driver.internal.core.protocol.ByteBufPrimitiveCodec;
 import com.datastax.oss.protocol.internal.Compressor;
 import com.datastax.oss.protocol.internal.Frame;
 import com.datastax.oss.protocol.internal.FrameCodec;
+import com.datastax.oss.protocol.internal.Message;
 import com.datastax.oss.protocol.internal.ProtocolConstants.ErrorCode;
 import com.datastax.oss.protocol.internal.response.Error;
+import com.datastax.oss.protocol.internal.response.Supported;
 import com.datastax.oss.protocol.internal.response.error.Unprepared;
 import com.google.api.core.InternalApi;
+import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -40,14 +43,20 @@ import java.util.Collections;
  * <p>This class cannot be instantiated.
  */
 @InternalApi
-public final class ErrorMessageUtils {
+public final class MessageUtils {
 
   private static final int PROTOCOL_VERSION = 4;
+  private static final Supported SUPPORTED_MESSAGE =
+      new Supported(
+          ImmutableMap.of(
+              "CQL_VERSION", Collections.singletonList("3.0.0"),
+              "COMPRESSION", Collections.emptyList()));
+
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(
           new ByteBufPrimitiveCodec(ByteBufAllocator.DEFAULT), Compressor.none());
 
-  private ErrorMessageUtils() {
+  private MessageUtils() {
     throw new IllegalStateException("Utility class cannot be instantiated");
   }
 
@@ -83,9 +92,23 @@ public final class ErrorMessageUtils {
    * @return A {@link ByteString} representing the error response.
    */
   public static ByteString errorResponse(int streamId, Error errorMsg) {
+    return messageResponse(streamId, errorMsg);
+  }
+
+  /**
+   * Creates a supported options message response.
+   *
+   * @param streamId The stream id of the message.
+   * @return A {@link ByteString} representing the supported options response.
+   */
+  public static ByteString supportedResponse(int streamId) {
+    return messageResponse(streamId, SUPPORTED_MESSAGE);
+  }
+
+  public static ByteString messageResponse(int streamId, Message message) {
     Frame responseFrame =
         Frame.forResponse(
-            PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, Collections.emptyList(), errorMsg);
+            PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, Collections.emptyList(), message);
     ByteBuf responseBuf = serverFrameCodec.encode(responseFrame);
     ByteString response = ByteString.copyFrom(responseBuf.nioBuffer());
     responseBuf.release();
