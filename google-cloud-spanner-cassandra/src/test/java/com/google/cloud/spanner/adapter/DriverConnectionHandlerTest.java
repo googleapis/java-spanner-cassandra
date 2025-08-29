@@ -16,8 +16,8 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.MessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.MessageUtils.unpreparedResponse;
 import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
