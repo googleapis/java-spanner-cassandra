@@ -33,12 +33,16 @@ import io.netty.buffer.ByteBufAllocator;
 import java.util.Collections;
 
 /**
- * Utility class for creating specific types of error response frames used in the server protocol,
- * encoded as byte arrays suitable for network transmission.
+ * Utility class for creating specific types of response frames used in the server protocol, encoded
+ * as byte arrays suitable for network transmission.
  *
  * <p>This class provides static methods to generate common error responses like {@link
- * ErrorCode#SERVER_ERROR} and {@link ErrorCode#UNPREPARED}. It handles the necessary framing and
- * encoding using the defined protocol version and server codec.
+ * ErrorCode#SERVER_ERROR}, {@link ErrorCode#UNPREPARED}.
+ *
+ * <p>This class also provides static method to a supported options message response.
+ *
+ * <p>It handles the necessary framing and encoding using the defined protocol version and server
+ * codec.
  *
  * <p>This class cannot be instantiated.
  */
