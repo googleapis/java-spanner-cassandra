@@ -118,7 +118,9 @@ public class SpannerContext extends DatabaseContext {
             .withConfigLoader(
                 DriverConfigLoader.programmaticBuilder()
                     .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
-                    .withClass(DefaultDriverOption.RETRY_POLICY_CLASS, SpannerCqlRetryPolicy.class)
+                    .withString(
+                        DefaultDriverOption.RETRY_POLICY_CLASS,
+                        SpannerCqlRetryPolicy.class.getName())
                     .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofMinutes(5))
                     .withDuration(
                         DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofMinutes(5))
