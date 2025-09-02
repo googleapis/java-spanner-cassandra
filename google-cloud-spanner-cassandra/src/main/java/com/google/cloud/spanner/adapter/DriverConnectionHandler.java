@@ -17,6 +17,7 @@ limitations under the License.
 package com.google.cloud.spanner.adapter;
 
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.supportedResponse;
 import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
 import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
 
@@ -33,6 +34,7 @@ import com.datastax.oss.protocol.internal.ProtocolV5ServerCodecs;
 import com.datastax.oss.protocol.internal.ProtocolV6ServerCodecs;
 import com.datastax.oss.protocol.internal.request.Batch;
 import com.datastax.oss.protocol.internal.request.Execute;
+import com.datastax.oss.protocol.internal.request.Prepare;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.datastax.oss.protocol.internal.response.Error;
 import com.datastax.oss.protocol.internal.response.error.Unprepared;
@@ -87,12 +89,6 @@ final class DriverConnectionHandler implements Runnable {
   private static final GrpcCallContext DEFAULT_CONTEXT_WITH_LAR =
       GrpcCallContext.createDefault().withExtraHeaders(ROUTE_TO_LEADER_HEADER_MAP);
   private static final byte[] EMPTY_BYTES = new byte[0];
-  private static final String ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS =
-      "GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS";
-  private static final boolean LOG_SERVER_ERRORS =
-      Boolean.parseBoolean(
-          System.getenv()
-              .getOrDefault(ENV_VAR_GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS, "false"));
 
   /**
    * Constructor for DriverConnectionHandler.
@@ -151,51 +147,23 @@ final class DriverConnectionHandler implements Runnable {
       throws IOException {
     // Keep processing until End-Of-Stream is reached on the input
     while (true) {
-      int streamId = defaultStreamId; // Initialize with a default value.
+      int streamId = defaultStreamId;
       Instant startTime = null;
       ByteString response;
       try {
         // 1. Read and construct the message context from the input stream
         MessageContext ctx = constructMessageContext(inputStream);
+        streamId = ctx.streamId;
 
         startTime = Instant.now();
         // 2. Check for EOF signaled by an empty payload
         if (ctx.payload.length == 0) {
           break; // Break out of the loop gracefully in case of EOF
         }
-
-        // 3. Prepare the payload.
-        PreparePayloadResult prepareResult = preparePayload(ctx);
-        streamId = ctx.streamId;
-
-        if (prepareResult.getAttachmentErrorResponse().isPresent()) {
-          response = prepareResult.getAttachmentErrorResponse().get();
-        } else {
-          // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-          response =
-              adapterClientWrapper.sendGrpcRequest(
-                  ctx.payload,
-                  prepareResult.getAttachments(),
-                  prepareResult.getContext(),
-                  streamId);
-          if (LOG_SERVER_ERRORS) {
-            try {
-              Frame frame = decodeClientFrame(response.toByteArray());
-              if (frame.message instanceof Error && !(frame.message instanceof Unprepared)) {
-                Error error = (Error) frame.message;
-                LOG.error(
-                    "Error message received from the server: code: {}, message: {}",
-                    error.code,
-                    error.message);
-              }
-            } catch (RuntimeException e) {
-              // Do nothing if we are not able to decode the message as the driver will throw error
-              // on its side.
-            }
-          }
-        }
+        // 3. Handle request
+        response = handleRequest(ctx);
       } catch (RuntimeException e) {
-        // 5. Handle any error during payload construction or attachment processing.
+        // 4. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
         LOG.error("Error processing request: ", e);
         response =
@@ -205,6 +173,43 @@ final class DriverConnectionHandler implements Runnable {
       response.writeTo(outputStream);
       outputStream.flush();
       recordMetrics(startTime);
+    }
+  }
+
+  private ByteString handleRequest(MessageContext ctx) {
+    if (ctx.opCode == ProtocolConstants.Opcode.OPTIONS) {
+      return supportedResponse(ctx.streamId);
+    }
+
+    PreparePayloadResult prepareResult = preparePayload(ctx);
+    if (prepareResult.getAttachmentErrorResponse().isPresent()) {
+      return prepareResult.getAttachmentErrorResponse().get();
+    }
+
+    ByteString response =
+        adapterClientWrapper.sendGrpcRequest(
+            ctx.payload, prepareResult.getAttachments(), prepareResult.getContext(), ctx.streamId);
+
+    logServerErrorIfPresent(response, prepareResult.getAttachments());
+    return response;
+  }
+
+  private void logServerErrorIfPresent(ByteString response, Map<String, String> attMap) {
+    try {
+      Frame frame = decodeClientFrame(response.toByteArray());
+      if (frame.message instanceof Error && !(frame.message instanceof Unprepared)) {
+        Error error = (Error) frame.message;
+        LOG.error(
+            "Error message received from the server: code: {}, message: {}",
+            error.code,
+            error.message);
+        for (Map.Entry<String, String> entry : attMap.entrySet()) {
+          LOG.error("Attachment: Key: {}, Value: {}" + entry.getKey() + " -  " + entry.getValue());
+        }
+      }
+    } catch (RuntimeException e) {
+      // Do nothing if we are not able to decode the message, as the driver will throw an error
+      // on its side.
     }
   }
 
@@ -344,9 +349,16 @@ final class DriverConnectionHandler implements Runnable {
         return prepareBatchMessage((Batch) decodeFrame(ctx.payload).message, ctx.streamId);
       case ProtocolConstants.Opcode.QUERY:
         return prepareQueryMessage((Query) decodeFrame(ctx.payload).message, ctx.streamId);
+      case ProtocolConstants.Opcode.PREPARE:
+        return prepareMessage((Prepare) decodeFrame(ctx.payload).message, ctx.streamId);
       default:
         return new PreparePayloadResult(DEFAULT_CONTEXT);
     }
+  }
+
+  private PreparePayloadResult prepareMessage(Prepare message, int streamId) {
+    LOG.debug("Query: {}", message.cqlQuery);
+    return new PreparePayloadResult(DEFAULT_CONTEXT);
   }
 
   private PreparePayloadResult prepareExecuteMessage(Execute message, int streamId) {

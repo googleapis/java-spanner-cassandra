@@ -66,7 +66,8 @@ public class Launcher {
   private static final Logger LOG = LoggerFactory.getLogger(Launcher.class);
   private static final BuiltInMetricsProvider builtInMetricsProvider =
       BuiltInMetricsProvider.INSTANCE;
-  private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
+  private static final String DEFAULT_SPANNER_ENDPOINT =
+      "staging-wrenchworks.sandbox.googleapis.com:443";
   private static final String DATABASE_URI_PROP_KEY = "databaseUri";
   private static final String HOST_PROP_KEY = "host";
   private static final String PORT_PROP_KEY = "port";
