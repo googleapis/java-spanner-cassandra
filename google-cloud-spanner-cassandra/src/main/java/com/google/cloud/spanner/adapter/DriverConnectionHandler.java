@@ -165,9 +165,10 @@ final class DriverConnectionHandler implements Runnable {
         if (ctx.payload.length == 0) {
           break; // Break out of the loop gracefully in case of EOF
         }
+        // 3. Handle request
         response = handleRequest(ctx);
       } catch (RuntimeException e) {
-        // 3. Handle any error during payload construction or attachment processing.
+        // 4. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
         LOG.error("Error processing request: ", e);
         response =
