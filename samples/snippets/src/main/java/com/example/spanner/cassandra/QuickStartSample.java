@@ -21,11 +21,14 @@ package com.example.spanner.cassandra;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
+import com.datastax.oss.driver.api.core.cql.*;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.google.cloud.spanner.adapter.SpannerCqlSession;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 // This sample assumes your spanner database <my_db> contains a table <users>
@@ -42,9 +45,9 @@ class QuickStartSample {
   public static void main(String[] args) {
 
     // TODO(developer): Replace these variables before running the sample.
-    final String projectId = "my-gcp-project";
-    final String instanceId = "my-spanner-instance";
-    final String databaseId = "my_db";
+    final String projectId = "span-cloud-testing";
+    final String instanceId = "c2sp";
+    final String databaseId = "yahoo";
 
     final String databaseUri =
         String.format("projects/%s/instances/%s/databases/%s", projectId, instanceId, databaseId);
@@ -67,25 +70,62 @@ class QuickStartSample {
 
       System.out.printf("Inserting user with ID: %d%n", randomUserId);
 
-      // INSERT data
-      session.execute(
-          "INSERT INTO users (id, active, username) VALUES (?, ?, ?)",
-          randomUserId,
-          true,
-          "John Doe");
+      PreparedStatement prepared =
+          session.prepare("INSERT INTO users (id, active, username) VALUES (?, ?, ?)");
+      PreparedStatement prepared1 =
+          session.prepare("SELECT id, active, username FROM users WHERE id = ?");
 
-      System.out.printf("Successfully inserted user: %d%n", randomUserId);
-      System.out.printf("Querying user: %d%n", randomUserId);
+      PreparedStatement insert =
+          session.prepare(
+              "INSERT INTO native_address_book_entries_v2 (guid, source, device_id,"
+                  + " entry_hash, local_ids) VALUES (?, ?, ?, ?, ?);");
+
+      PreparedStatement update =
+          session.prepare(
+              "UPDATE native_address_book_entries_v2 SET local_ids[?] = false WHERE guid = ? AND"
+                  + " source = ? AND device_id = ? AND entry_hash = ?;");
+
+      PreparedStatement select =
+          session.prepare(
+              "SELECT local_ids, source FROM native_address_book_entries_v2 WHERE guid = ?");
+
+      Map<String, Boolean> userAttributes = new HashMap<>();
+      userAttributes.put("theme", true);
+      userAttributes.put("language", true);
+
+      // BoundStatement bound = insert.bind("John Doe", "source", "device_id", 10, userAttributes);
+
+      BoundStatement boundInsert =
+          insert
+              .bind()
+              .setString("guid", "mk")
+              .setString("source", "source")
+              .setString("device_id", "device_id")
+              .setInt("entry_hash", 2211)
+              .setMap("local_ids", userAttributes, String.class, Boolean.class);
+
+      // 3. EXECUTE the bound statement
+      session.execute(boundInsert);
+
+      BoundStatement boundUpdate = update.bind("language", "mk", "source", "device_id", 2211);
+
+      // 3. EXECUTE the bound statement
+      session.execute(boundUpdate);
+
+      BoundStatement boundSelect = select.bind("mk");
 
       // SELECT data
-      ResultSet rs =
-          session.execute("SELECT id, active, username FROM users WHERE id = ?", randomUserId);
+      ResultSet rs = session.execute(boundSelect);
 
       // Get the first row from the result set
       Row row = rs.one();
 
-      System.out.printf(
-          "%d %b %s%n", row.getInt("id"), row.getBoolean("active"), row.getString("username"));
+      Map<String, Boolean> retrievedFlags = row.getMap("local_ids", String.class, Boolean.class);
+
+      retrievedFlags.forEach(
+          (feature, isEnabled) -> System.out.println("   - " + feature + ": " + isEnabled));
+
+      System.out.printf("Source: %s%n", row.getString("source"));
 
     } catch (Exception e) {
       e.printStackTrace();

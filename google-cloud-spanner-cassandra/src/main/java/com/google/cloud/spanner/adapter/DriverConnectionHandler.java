@@ -178,7 +178,7 @@ final class DriverConnectionHandler implements Runnable {
                   prepareResult.getAttachments(),
                   prepareResult.getContext(),
                   streamId);
-          if (LOG_SERVER_ERRORS) {
+          if (true) {
             try {
               Frame frame = decodeClientFrame(response.toByteArray());
               if (frame.message instanceof Error && !(frame.message instanceof Unprepared)) {
@@ -187,6 +187,11 @@ final class DriverConnectionHandler implements Runnable {
                     "Error message received from the server: code: {}, message: {}",
                     error.code,
                     error.message);
+              }
+
+              for (Map.Entry<String, String> entry : prepareResult.getAttachments().entrySet()) {
+                System.out.println(
+                    "Key: {}, Value: {}" + entry.getKey() + " -  " + entry.getValue());
               }
             } catch (RuntimeException e) {
               // Do nothing if we are not able to decode the message as the driver will throw error
