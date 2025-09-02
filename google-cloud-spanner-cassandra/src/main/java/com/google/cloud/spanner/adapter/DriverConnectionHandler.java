@@ -16,8 +16,9 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.unpreparedResponse;
+import static com.google.cloud.spanner.adapter.util.MessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.MessageUtils.supportedResponse;
+import static com.google.cloud.spanner.adapter.util.MessageUtils.unpreparedResponse;
 import static com.google.cloud.spanner.adapter.util.StringUtils.startsWith;
 
 import com.datastax.dse.protocol.internal.DseProtocolV2ServerCodecs;
@@ -151,51 +152,23 @@ final class DriverConnectionHandler implements Runnable {
       throws IOException {
     // Keep processing until End-Of-Stream is reached on the input
     while (true) {
-      int streamId = defaultStreamId; // Initialize with a default value.
+      int streamId = defaultStreamId;
       Instant startTime = null;
       ByteString response;
       try {
         // 1. Read and construct the message context from the input stream
         MessageContext ctx = constructMessageContext(inputStream);
+        streamId = ctx.streamId;
 
         startTime = Instant.now();
         // 2. Check for EOF signaled by an empty payload
         if (ctx.payload.length == 0) {
           break; // Break out of the loop gracefully in case of EOF
         }
-
-        // 3. Prepare the payload.
-        PreparePayloadResult prepareResult = preparePayload(ctx);
-        streamId = ctx.streamId;
-
-        if (prepareResult.getAttachmentErrorResponse().isPresent()) {
-          response = prepareResult.getAttachmentErrorResponse().get();
-        } else {
-          // 4. If attachment preparation didn't yield an immediate response, send the gRPC request.
-          response =
-              adapterClientWrapper.sendGrpcRequest(
-                  ctx.payload,
-                  prepareResult.getAttachments(),
-                  prepareResult.getContext(),
-                  streamId);
-          if (LOG_SERVER_ERRORS) {
-            try {
-              Frame frame = decodeClientFrame(response.toByteArray());
-              if (frame.message instanceof Error && !(frame.message instanceof Unprepared)) {
-                Error error = (Error) frame.message;
-                LOG.error(
-                    "Error message received from the server: code: {}, message: {}",
-                    error.code,
-                    error.message);
-              }
-            } catch (RuntimeException e) {
-              // Do nothing if we are not able to decode the message as the driver will throw error
-              // on its side.
-            }
-          }
-        }
+        // 3. Handle request
+        response = handleRequest(ctx);
       } catch (RuntimeException e) {
-        // 5. Handle any error during payload construction or attachment processing.
+        // 4. Handle any error during payload construction or attachment processing.
         // Create a server error response to send back to the client.
         LOG.error("Error processing request: ", e);
         response =
@@ -205,6 +178,42 @@ final class DriverConnectionHandler implements Runnable {
       response.writeTo(outputStream);
       outputStream.flush();
       recordMetrics(startTime);
+    }
+  }
+
+  private ByteString handleRequest(MessageContext ctx) {
+    if (ctx.opCode == ProtocolConstants.Opcode.OPTIONS) {
+      return supportedResponse(ctx.streamId);
+    }
+
+    PreparePayloadResult prepareResult = preparePayload(ctx);
+    if (prepareResult.getAttachmentErrorResponse().isPresent()) {
+      return prepareResult.getAttachmentErrorResponse().get();
+    }
+
+    ByteString response =
+        adapterClientWrapper.sendGrpcRequest(
+            ctx.payload, prepareResult.getAttachments(), prepareResult.getContext(), ctx.streamId);
+
+    if (LOG_SERVER_ERRORS) {
+      logServerErrorIfPresent(response);
+    }
+    return response;
+  }
+
+  private void logServerErrorIfPresent(ByteString response) {
+    try {
+      Frame frame = decodeClientFrame(response.toByteArray());
+      if (frame.message instanceof Error && !(frame.message instanceof Unprepared)) {
+        Error error = (Error) frame.message;
+        LOG.error(
+            "Error message received from the server: code: {}, message: {}",
+            error.code,
+            error.message);
+      }
+    } catch (RuntimeException e) {
+      // Do nothing if we are not able to decode the message, as the driver will throw an error
+      // on its side.
     }
   }
 

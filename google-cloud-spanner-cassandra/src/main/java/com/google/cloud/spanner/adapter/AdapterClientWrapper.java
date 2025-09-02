@@ -16,7 +16,7 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
-import static com.google.cloud.spanner.adapter.util.ErrorMessageUtils.serverErrorResponse;
+import static com.google.cloud.spanner.adapter.util.MessageUtils.serverErrorResponse;
 
 import com.google.api.gax.rpc.ApiCallContext;
 import com.google.api.gax.rpc.ServerStream;
