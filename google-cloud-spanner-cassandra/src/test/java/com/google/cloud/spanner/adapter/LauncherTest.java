@@ -103,14 +103,13 @@ public class LauncherTest {
                     "listener_1",
                     "127.0.0.1",
                     9042,
-                    new SpannerConfigs(
-                        "projects/p/instances/i/databases/d-1-config-test", null, null)),
+                    new SpannerConfigs("projects/p/instances/i/databases/d-1-config-test", 4, 100)),
                 new ListenerConfigs(
                     "listener_2",
                     "0.0.0.0",
                     9043,
                     new SpannerConfigs(
-                        "projects/p/instances/i/databases/d-2-config-test", null, null))));
+                        "projects/p/instances/i/databases/d-2-config-test", 8, null))));
 
     try (MockedStatic<Runtime> mockedRuntime = mockStatic(Runtime.class);
         MockedStatic<YamlConfigLoader> mockedLoader = mockStatic(YamlConfigLoader.class);

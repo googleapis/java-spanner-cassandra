@@ -16,6 +16,7 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
+import com.google.cloud.spanner.adapter.configs.ConfigConstants;
 import com.google.cloud.spanner.adapter.configs.ListenerConfigs;
 import com.google.cloud.spanner.adapter.configs.UserConfigs;
 import com.google.cloud.spanner.adapter.configs.YamlConfigLoader;
@@ -55,7 +56,6 @@ import org.slf4j.LoggerFactory;
  *
  * <pre>
  * globalClientConfigs:
- *   spannerEndpoint: "spanner.googleapis.com:443"
  *   enableBuiltInMetrics: true
  *   healthCheckEndpoint: "127.0.0.1:8080"
  * listeners:
@@ -63,11 +63,7 @@ import org.slf4j.LoggerFactory;
  *     host: "127.0.0.1"
  *     port: 9042
  *     spanner:
- *       databaseUri: "projects/p/instances/i/databases/d1"
- *       session:
- *         numGrpcChannels: 4
- *       operation:
- *         maxCommitDelayMillis: 10
+ *       databaseUri: "projects/my-project/instances/my-instance/databases/my-database"
  *   - name: "listener_2"
  *     ...
  * </pre>
@@ -113,18 +109,6 @@ public class Launcher {
   private static final Logger LOG = LoggerFactory.getLogger(Launcher.class);
   private static final BuiltInMetricsProvider builtInMetricsProvider =
       BuiltInMetricsProvider.INSTANCE;
-  private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
-  private static final String DATABASE_URI_PROP_KEY = "databaseUri";
-  private static final String HOST_PROP_KEY = "host";
-  private static final String PORT_PROP_KEY = "port";
-  private static final String NUM_GRPC_CHANNELS_PROP_KEY = "numGrpcChannels";
-  private static final String DEFAULT_HOST = "0.0.0.0";
-  private static final int DEFAULT_PORT = 9042;
-  private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
-  private static final String MAX_COMMIT_DELAY_PROP_KEY = "maxCommitDelayMillis";
-  private static final String ENABLE_BUILTIN_METRICS_PROP_KEY = "enableBuiltInMetrics";
-  private static final String HEALTH_CHECK_PORT_PROP_KEY = "healthCheckPort";
-  private static final String CONFIG_FILE_PROP_KEY = "configFilePath";
   private final AdapterFactory adapterFactory;
   private final List<Adapter> adapters = new ArrayList<>();
   private HealthCheckServer healthCheckServer;
@@ -181,32 +165,30 @@ public class Launcher {
    */
   public void run(Map<String, String> properties) throws Exception {
     final LauncherConfig config = parseConfiguration(properties);
-    boolean allAdaptersStarted = true;
-
     if (config.healthCheckConfig != null) {
       startHealthCheckServer(config.healthCheckConfig);
     } else {
       LOG.info("Health check server is disabled.");
     }
 
+    final List<String> failedListeners = new ArrayList<>();
     for (ListenerConfig listenerConfig : config.listeners) {
       try {
         startAdapter(listenerConfig);
       } catch (Exception e) {
-        LOG.error(
-            "Failed to start adapter for listener on port {}: {}",
-            listenerConfig.port,
-            e.getMessage());
-        allAdaptersStarted = false;
+        String error = String.format("listener on port %d", listenerConfig.port);
+        LOG.error("Failed to start adapter for {}: {}", error, e.getMessage());
+        failedListeners.add(error);
       }
     }
 
+    final boolean allAdaptersStarted = failedListeners.isEmpty();
     if (healthCheckServer != null) {
       healthCheckServer.setReady(allAdaptersStarted);
     }
 
     if (!allAdaptersStarted) {
-      throw new IllegalStateException("One or more adapters failed to start.");
+      throw new IllegalStateException("One or more adapters failed to start: " + failedListeners);
     }
 
     // Register the single shutdown hook after all adapters are configured and started.
@@ -229,7 +211,7 @@ public class Launcher {
   }
 
   private LauncherConfig parseConfiguration(Map<String, String> properties) throws IOException {
-    final String configFilePath = properties.get(CONFIG_FILE_PROP_KEY);
+    final String configFilePath = properties.get(ConfigConstants.CONFIG_FILE_PROP_KEY);
     if (configFilePath != null) {
       LOG.info("Loading configuration from file: {}", configFilePath);
       try (InputStream inputStream = new FileInputStream(configFilePath)) {
@@ -266,9 +248,9 @@ public class Launcher {
   }
 
   private BuiltInMetricsRecorder createMetricsRecorder(
-      ListenerConfig config, DatabaseName databaseName) {
+      boolean enableBuiltInMetrics, DatabaseName databaseName) {
     final OpenTelemetry openTelemetry =
-        config.enableBuiltInMetrics
+        enableBuiltInMetrics
             ? builtInMetricsProvider.getOrCreateOpenTelemetry(
                 databaseName.getProject(), databaseName.getInstance())
             : OpenTelemetry.noop();
@@ -288,7 +270,8 @@ public class Launcher {
         config.enableBuiltInMetrics);
 
     final DatabaseName databaseName = DatabaseName.parse(config.databaseUri);
-    final BuiltInMetricsRecorder metricsRecorder = createMetricsRecorder(config, databaseName);
+    final BuiltInMetricsRecorder metricsRecorder =
+        createMetricsRecorder(config.enableBuiltInMetrics, databaseName);
     final AdapterOptions options = buildAdapterOptions(config, metricsRecorder);
 
     final Adapter adapter = adapterFactory.createAdapter(options);
@@ -323,7 +306,7 @@ public class Launcher {
         globalSpannerEndpoint =
             userConfigs.getGlobalClientConfigs().getSpannerEndpoint() != null
                 ? userConfigs.getGlobalClientConfigs().getSpannerEndpoint()
-                : DEFAULT_SPANNER_ENDPOINT;
+                : ConfigConstants.DEFAULT_SPANNER_ENDPOINT;
         globalEnableBuiltInMetrics =
             userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics() != null
                 && userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics();
@@ -333,7 +316,7 @@ public class Launcher {
                   userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint());
         }
       } else {
-        globalSpannerEndpoint = DEFAULT_SPANNER_ENDPOINT;
+        globalSpannerEndpoint = ConfigConstants.DEFAULT_SPANNER_ENDPOINT;
         globalEnableBuiltInMetrics = false;
       }
 
@@ -350,11 +333,11 @@ public class Launcher {
 
     static LauncherConfig fromProperties(Map<String, String> properties)
         throws UnknownHostException {
-      String databaseUri = properties.get(DATABASE_URI_PROP_KEY);
+      String databaseUri = properties.get(ConfigConstants.DATABASE_URI_PROP_KEY);
       if (databaseUri == null) {
         throw new IllegalArgumentException(
             "Spanner database URI not set. Please set it using the '"
-                + DATABASE_URI_PROP_KEY
+                + ConfigConstants.DATABASE_URI_PROP_KEY
                 + "' property.");
       }
 
@@ -405,16 +388,13 @@ public class Launcher {
     static ListenerConfig fromListenerConfigs(
         ListenerConfigs listener, String globalSpannerEndpoint, boolean globalEnableBuiltInMetrics)
         throws UnknownHostException {
-      String host = listener.getHost() != null ? listener.getHost() : DEFAULT_HOST;
-      int port = listener.getPort() != null ? listener.getPort() : DEFAULT_PORT;
+      String host = listener.getHost() != null ? listener.getHost() : ConfigConstants.DEFAULT_HOST;
+      int port = listener.getPort() != null ? listener.getPort() : ConfigConstants.DEFAULT_PORT;
       int numGrpcChannels =
-          listener.getSpanner().getSession() != null
-              ? listener.getSpanner().getSession().getNumGrpcChannels()
-              : DEFAULT_NUM_GRPC_CHANNELS;
-      Integer maxCommitDelayMillis =
-          listener.getSpanner().getOperation() != null
-              ? listener.getSpanner().getOperation().getMaxCommitDelayMillis()
-              : null;
+          listener.getSpanner().getNumGrpcChannels() != null
+              ? listener.getSpanner().getNumGrpcChannels()
+              : ConfigConstants.DEFAULT_NUM_GRPC_CHANNELS;
+      Integer maxCommitDelayMillis = listener.getSpanner().getMaxCommitDelayMillis();
 
       return new ListenerConfig(
           listener.getSpanner().getDatabaseUri(),
@@ -428,24 +408,29 @@ public class Launcher {
 
     static ListenerConfig fromProperties(Map<String, String> properties)
         throws UnknownHostException {
-      String host = properties.getOrDefault(HOST_PROP_KEY, DEFAULT_HOST);
+      String host =
+          properties.getOrDefault(ConfigConstants.HOST_PROP_KEY, ConfigConstants.DEFAULT_HOST);
       int port =
-          Integer.parseInt(properties.getOrDefault(PORT_PROP_KEY, String.valueOf(DEFAULT_PORT)));
+          Integer.parseInt(
+              properties.getOrDefault(
+                  ConfigConstants.PORT_PROP_KEY, String.valueOf(ConfigConstants.DEFAULT_PORT)));
       int numGrpcChannels =
           Integer.parseInt(
               properties.getOrDefault(
-                  NUM_GRPC_CHANNELS_PROP_KEY, String.valueOf(DEFAULT_NUM_GRPC_CHANNELS)));
-      String maxCommitDelayProperty = properties.get(MAX_COMMIT_DELAY_PROP_KEY);
+                  ConfigConstants.NUM_GRPC_CHANNELS_PROP_KEY,
+                  String.valueOf(ConfigConstants.DEFAULT_NUM_GRPC_CHANNELS)));
+      String maxCommitDelayProperty = properties.get(ConfigConstants.MAX_COMMIT_DELAY_PROP_KEY);
       Integer maxCommitDelayMillis =
           maxCommitDelayProperty != null ? Integer.parseInt(maxCommitDelayProperty) : null;
       boolean enableBuiltInMetrics =
-          Boolean.parseBoolean(properties.getOrDefault(ENABLE_BUILTIN_METRICS_PROP_KEY, "false"));
+          Boolean.parseBoolean(
+              properties.getOrDefault(ConfigConstants.ENABLE_BUILTIN_METRICS_PROP_KEY, "false"));
 
       return new ListenerConfig(
-          properties.get(DATABASE_URI_PROP_KEY),
+          properties.get(ConfigConstants.DATABASE_URI_PROP_KEY),
           InetAddress.getByName(host),
           port,
-          DEFAULT_SPANNER_ENDPOINT,
+          ConfigConstants.DEFAULT_SPANNER_ENDPOINT,
           numGrpcChannels,
           maxCommitDelayMillis,
           enableBuiltInMetrics);
@@ -476,11 +461,12 @@ public class Launcher {
     @Nullable
     static HealthCheckConfig fromProperties(Map<String, String> properties)
         throws UnknownHostException {
-      String healthCheckPortStr = properties.get(HEALTH_CHECK_PORT_PROP_KEY);
+      String healthCheckPortStr = properties.get(ConfigConstants.HEALTH_CHECK_PORT_PROP_KEY);
       if (healthCheckPortStr == null) {
         return null;
       }
-      String host = properties.getOrDefault(HOST_PROP_KEY, DEFAULT_HOST);
+      String host =
+          properties.getOrDefault(ConfigConstants.HOST_PROP_KEY, ConfigConstants.DEFAULT_HOST);
       int port = parsePort(healthCheckPortStr);
       return new HealthCheckConfig(InetAddress.getByName(host), port);
     }

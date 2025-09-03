@@ -19,49 +19,37 @@ package com.google.cloud.spanner.adapter.configs;
 import java.util.Map;
 
 /**
- * Represents the Spanner client configurations, including details about sessions and operations,
- * loaded from a YAML file.
+ * Represents the Spanner client configurations, including the database URI, the number of gRPC
+ * channels, and the maximum commit delay. This object is loaded from a YAML file.
  */
 public class SpannerConfigs {
   private final String databaseUri;
-  private final SessionConfigs session;
-  private final OperationConfigs operation;
+  private final Integer numGrpcChannels;
+  private final Integer maxCommitDelayMillis;
 
-  public SpannerConfigs(String databaseUri, SessionConfigs session, OperationConfigs operation) {
+  public SpannerConfigs(String databaseUri, Integer numGrpcChannels, Integer maxCommitDelayMillis) {
     this.databaseUri = databaseUri;
-    this.session = session;
-    this.operation = operation;
+    this.numGrpcChannels = numGrpcChannels;
+    this.maxCommitDelayMillis = maxCommitDelayMillis;
   }
 
   public static SpannerConfigs fromMap(Map<String, Object> yamlMap) {
     String databaseUri = (String) yamlMap.get("databaseUri");
+    Integer numGrpcChannels = (Integer) yamlMap.get("numGrpcChannels");
+    Integer maxCommitDelayMillis = (Integer) yamlMap.get("maxCommitDelayMillis");
 
-    SessionConfigs session = null;
-    if (yamlMap.containsKey("session")) {
-      @SuppressWarnings("unchecked")
-      Map<String, Object> sessionMap = (Map<String, Object>) yamlMap.get("session");
-      session = SessionConfigs.fromMap(sessionMap);
-    }
-
-    OperationConfigs operation = null;
-    if (yamlMap.containsKey("operation")) {
-      @SuppressWarnings("unchecked")
-      Map<String, Object> operationMap = (Map<String, Object>) yamlMap.get("operation");
-      operation = OperationConfigs.fromMap(operationMap);
-    }
-
-    return new SpannerConfigs(databaseUri, session, operation);
+    return new SpannerConfigs(databaseUri, numGrpcChannels, maxCommitDelayMillis);
   }
 
   public String getDatabaseUri() {
     return databaseUri;
   }
 
-  public SessionConfigs getSession() {
-    return session;
+  public Integer getNumGrpcChannels() {
+    return numGrpcChannels;
   }
 
-  public OperationConfigs getOperation() {
-    return operation;
+  public Integer getMaxCommitDelayMillis() {
+    return maxCommitDelayMillis;
   }
 }

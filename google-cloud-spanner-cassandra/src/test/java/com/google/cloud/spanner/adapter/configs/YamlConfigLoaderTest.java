@@ -56,11 +56,9 @@ public class YamlConfigLoaderTest {
       assertThat(listener1.getSpanner().getDatabaseUri())
           .isEqualTo("projects/my-project/instances/my-instance/databases/my-database");
 
-      assertThat(listener1.getSpanner().getSession()).isNotNull();
-      assertThat(listener1.getSpanner().getSession().getNumGrpcChannels()).isEqualTo(4);
+      assertThat(listener1.getSpanner().getNumGrpcChannels()).isEqualTo(4);
 
-      assertThat(listener1.getSpanner().getOperation()).isNotNull();
-      assertThat(listener1.getSpanner().getOperation().getMaxCommitDelayMillis()).isEqualTo(100);
+      assertThat(listener1.getSpanner().getMaxCommitDelayMillis()).isEqualTo(100);
 
       // Verify listener_2
       ListenerConfigs listener2 = listeners.get(1);
@@ -73,10 +71,9 @@ public class YamlConfigLoaderTest {
       assertThat(listener2.getSpanner().getDatabaseUri())
           .isEqualTo("projects/my-project/instances/my-instance/databases/my-database-2");
 
-      assertThat(listener2.getSpanner().getSession()).isNotNull();
-      assertThat(listener2.getSpanner().getSession().getNumGrpcChannels()).isEqualTo(8);
+      assertThat(listener2.getSpanner().getNumGrpcChannels()).isEqualTo(8);
 
-      assertThat(listener2.getSpanner().getOperation()).isNull();
+      assertThat(listener2.getSpanner().getMaxCommitDelayMillis()).isNull();
     }
   }
 
@@ -122,8 +119,8 @@ public class YamlConfigLoaderTest {
       assertThat(listener.getSpanner()).isNotNull();
       assertThat(listener.getSpanner().getDatabaseUri()).isEqualTo("test");
       assertThat(listener.getPort()).isNull();
-      assertThat(listener.getSpanner().getSession()).isNull();
-      assertThat(listener.getSpanner().getOperation()).isNull();
+      assertThat(listener.getSpanner().getNumGrpcChannels()).isNull();
+      assertThat(listener.getSpanner().getMaxCommitDelayMillis()).isNull();
     }
   }
 
