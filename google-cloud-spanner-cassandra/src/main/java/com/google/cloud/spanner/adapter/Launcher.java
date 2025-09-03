@@ -13,15 +13,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package com.google.cloud.spanner.adapter;
 
+import com.google.cloud.spanner.adapter.configs.ListenerConfigs;
+import com.google.cloud.spanner.adapter.configs.UserConfigs;
+import com.google.cloud.spanner.adapter.configs.YamlConfigLoader;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
+import com.google.common.base.Strings;
 import com.google.spanner.adapter.v1.DatabaseName;
 import io.opentelemetry.api.OpenTelemetry;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +44,35 @@ import org.slf4j.LoggerFactory;
 /**
  * Main entry point for running a Spanner Cassandra Adapter as a stand-alone application.
  *
- * <p>This class reads configuration parameters from system properties, initializes the underlying
- * {@link Adapter}, registers a shutdown hook for graceful termination, and starts the adapter
- * service.
+ * <p>The adapter can be configured using a YAML file, specified by the {@code
+ * -DconfigFilePath=/path/to/config.yaml} system property. This is the recommended approach for
+ * production and complex setups, as it supports multiple listeners and global settings.
  *
- * <p>Configuration is provided via the following system properties:
+ * <p>For simpler setups or quick testing, configuration can be provided via system properties. This
+ * method only supports a single adapter listener.
+ *
+ * <p><b>YAML Configuration Structure:</b>
+ *
+ * <pre>
+ * globalClientConfigs:
+ *   spannerEndpoint: "spanner.googleapis.com:443"
+ *   enableBuiltInMetrics: true
+ *   healthCheckEndpoint: "127.0.0.1:8080"
+ * listeners:
+ *   - name: "listener_1"
+ *     host: "127.0.0.1"
+ *     port: 9042
+ *     spanner:
+ *       databaseUri: "projects/p/instances/i/databases/d1"
+ *       session:
+ *         numGrpcChannels: 4
+ *       operation:
+ *         maxCommitDelayMillis: 10
+ *   - name: "listener_2"
+ *     ...
+ * </pre>
+ *
+ * <p><b>System Property Configuration (for a single listener):</b>
  *
  * <ul>
  *   <li>{@code databaseUri}: (Required) The URI of the target Spanner database.
@@ -48,7 +87,15 @@ import org.slf4j.LoggerFactory;
  *       unspecifed, health check server will NOT be started.
  * </ul>
  *
- * Example usage:
+ * <p><b>Example Usage:</b>
+ *
+ * <p>Using a YAML configuration file:
+ *
+ * <pre>
+ * java -DconfigFilePath=/path/to/config.yaml -jar path/to/your/spanner-cassandra-launcher.jar
+ * </pre>
+ *
+ * <p>Using system properties for a single adapter:
  *
  * <pre>
  * java -DdatabaseUri=projects/my-project/instances/my-instance/databases/my-database \
@@ -57,7 +104,7 @@ import org.slf4j.LoggerFactory;
  * -DnumGrpcChannels=4 \
  * -DmaxCommitDelayMillis=5 \
  * -DhealthCheckPort=8080 \
- * -jar com.google.cloud.spanner.adapter.SpannerCassandraLauncher
+ * -jar path/to/your/spanner-cassandra-launcher.jar
  * </pre>
  *
  * @see Adapter
@@ -72,26 +119,97 @@ public class Launcher {
   private static final String PORT_PROP_KEY = "port";
   private static final String NUM_GRPC_CHANNELS_PROP_KEY = "numGrpcChannels";
   private static final String DEFAULT_HOST = "0.0.0.0";
-  private static final String DEFAULT_PORT = "9042";
-  private static final String DEFAULT_NUM_GRPC_CHANNELS = "4";
+  private static final int DEFAULT_PORT = 9042;
+  private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
   private static final String MAX_COMMIT_DELAY_PROP_KEY = "maxCommitDelayMillis";
   private static final String ENABLE_BUILTIN_METRICS_PROP_KEY = "enableBuiltInMetrics";
   private static final String HEALTH_CHECK_PORT_PROP_KEY = "healthCheckPort";
+  private static final String CONFIG_FILE_PROP_KEY = "configFilePath";
+  private final AdapterFactory adapterFactory;
+  private final List<Adapter> adapters = new ArrayList<>();
+  private HealthCheckServer healthCheckServer;
 
-  private final Adapter adapter;
-  private final HealthCheckServer healthCheckServer;
+  /**
+   * Factory for creating Adapter and HealthCheckServer instances. This class allows for mocking
+   * these dependencies in tests.
+   */
+  public static class AdapterFactory {
+    public Adapter createAdapter(AdapterOptions options) {
+      return new Adapter(options);
+    }
 
-  Launcher(Adapter adapter, @Nullable HealthCheckServer healthCheckServer) {
-    this.adapter = adapter;
-    this.healthCheckServer = healthCheckServer;
+    public HealthCheckServer createHealthCheckServer(InetAddress hostAddress, int port)
+        throws IOException {
+      return new HealthCheckServer(hostAddress, port);
+    }
   }
 
-  void launch() {
-    if (healthCheckServer != null) {
-      healthCheckServer.start();
-    }
-    adapter.start();
+  public Launcher() {
+    this(new AdapterFactory());
+  }
 
+  public Launcher(AdapterFactory adapterFactory) {
+    this.adapterFactory = adapterFactory;
+  }
+
+  public static void main(String[] args) throws Exception {
+    Launcher launcher = new Launcher();
+
+    Map<String, String> propertiesMap =
+        System.getProperties().stringPropertyNames().stream()
+            .collect(Collectors.toMap(Function.identity(), System.getProperties()::getProperty));
+    launcher.run(propertiesMap);
+
+    // Keep the main thread alive until all adapters are shut down.
+    try {
+      Thread.currentThread().join();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  /**
+   * Parses the configuration, starts all configured listeners and the health check server, and
+   * registers a shutdown hook for graceful termination.
+   *
+   * @param properties A map of configuration properties.
+   * @throws IOException if there is an error reading the configuration file or starting the network
+   *     servers.
+   * @throws IllegalArgumentException if the configuration is invalid (e.g., missing required
+   *     properties, invalid port numbers).
+   * @throws IllegalStateException if one or more adapters fail to start.
+   */
+  public void run(Map<String, String> properties) throws Exception {
+    final LauncherConfig config = parseConfiguration(properties);
+    boolean allAdaptersStarted = true;
+
+    if (config.healthCheckConfig != null) {
+      startHealthCheckServer(config.healthCheckConfig);
+    } else {
+      LOG.info("Health check server is disabled.");
+    }
+
+    for (ListenerConfig listenerConfig : config.listeners) {
+      try {
+        startAdapter(listenerConfig);
+      } catch (Exception e) {
+        LOG.error(
+            "Failed to start adapter for listener on port {}: {}",
+            listenerConfig.port,
+            e.getMessage());
+        allAdaptersStarted = false;
+      }
+    }
+
+    if (healthCheckServer != null) {
+      healthCheckServer.setReady(allAdaptersStarted);
+    }
+
+    if (!allAdaptersStarted) {
+      throw new IllegalStateException("One or more adapters failed to start.");
+    }
+
+    // Register the single shutdown hook after all adapters are configured and started.
     Runtime.getRuntime()
         .addShutdownHook(
             new Thread(
@@ -99,87 +217,286 @@ public class Launcher {
                   if (healthCheckServer != null) {
                     healthCheckServer.stop();
                   }
-                  try {
-                    adapter.stop();
-                  } catch (IOException e) {
-                    LOG.warn("Error while stopping Adapter: " + e.getMessage());
-                  }
+                  adapters.forEach(
+                      adapter -> {
+                        try {
+                          adapter.stop();
+                        } catch (IOException e) {
+                          LOG.warn("Error while stopping Adapter: " + e.getMessage());
+                        }
+                      });
                 }));
+  }
 
-    if (healthCheckServer != null) {
-      healthCheckServer.setReady(true);
+  private LauncherConfig parseConfiguration(Map<String, String> properties) throws IOException {
+    final String configFilePath = properties.get(CONFIG_FILE_PROP_KEY);
+    if (configFilePath != null) {
+      LOG.info("Loading configuration from file: {}", configFilePath);
+      try (InputStream inputStream = new FileInputStream(configFilePath)) {
+        UserConfigs userConfigs = YamlConfigLoader.load(inputStream);
+        return LauncherConfig.fromUserConfigs(userConfigs);
+      } catch (FileNotFoundException e) {
+        throw new IllegalArgumentException("Configuration file not found: " + configFilePath, e);
+      }
+    } else {
+      LOG.info("Loading configuration from system properties.");
+      return LauncherConfig.fromProperties(properties);
     }
   }
 
-  public static void main(String[] args) throws Exception {
-    final String databaseUri = System.getProperty(DATABASE_URI_PROP_KEY);
-    final InetAddress inetAddress =
-        InetAddress.getByName(System.getProperty(HOST_PROP_KEY, DEFAULT_HOST));
-    final int port = Integer.parseInt(System.getProperty(PORT_PROP_KEY, DEFAULT_PORT));
-    final int numGrpcChannels =
-        Integer.parseInt(System.getProperty(NUM_GRPC_CHANNELS_PROP_KEY, DEFAULT_NUM_GRPC_CHANNELS));
-    final String maxCommitDelayProperty = System.getProperty(MAX_COMMIT_DELAY_PROP_KEY);
-    final boolean enableBuiltInMetrics =
-        Boolean.parseBoolean(System.getProperty(ENABLE_BUILTIN_METRICS_PROP_KEY, "false"));
-    final String healthCheckPortStr = System.getProperty(HEALTH_CHECK_PORT_PROP_KEY);
-    HealthCheckServer healthCheckServer = null;
+  private void startHealthCheckServer(HealthCheckConfig config) throws IOException {
+    healthCheckServer = adapterFactory.createHealthCheckServer(config.hostAddress, config.port);
+    healthCheckServer.start();
+  }
 
-    if (databaseUri == null) {
-      throw new IllegalArgumentException(
-          "Spanner database URI not set. Please set it using -DdatabaseUri option.");
+  private AdapterOptions buildAdapterOptions(
+      ListenerConfig config, BuiltInMetricsRecorder metricsRecorder) {
+    final AdapterOptions.Builder opBuilder =
+        new AdapterOptions.Builder()
+            .spannerEndpoint(config.spannerEndpoint)
+            .tcpPort(config.port)
+            .databaseUri(config.databaseUri)
+            .inetAddress(config.hostAddress)
+            .numGrpcChannels(config.numGrpcChannels)
+            .metricsRecorder(metricsRecorder);
+    if (config.maxCommitDelayMillis != null) {
+      opBuilder.maxCommitDelay(Duration.ofMillis(config.maxCommitDelayMillis));
     }
+    return opBuilder.build();
+  }
 
-    if (healthCheckPortStr != null) {
-      final int healthCheckPort = Integer.parseInt(healthCheckPortStr);
-      if (healthCheckPort < 0 || healthCheckPort > 65535) {
-        throw new IllegalArgumentException(
-            "Invalid health check port '" + healthCheckPort + "'. Must be between 0 and 65535");
-      }
-      healthCheckServer = new HealthCheckServer(inetAddress, healthCheckPort);
-    } else {
-      LOG.debug("Health check server is disabled.");
-    }
-
-    DatabaseName databaseName = DatabaseName.parse(databaseUri);
-    OpenTelemetry openTelemetry =
-        enableBuiltInMetrics
+  private BuiltInMetricsRecorder createMetricsRecorder(
+      ListenerConfig config, DatabaseName databaseName) {
+    final OpenTelemetry openTelemetry =
+        config.enableBuiltInMetrics
             ? builtInMetricsProvider.getOrCreateOpenTelemetry(
                 databaseName.getProject(), databaseName.getInstance())
             : OpenTelemetry.noop();
-    BuiltInMetricsRecorder metricsRecorder =
-        new BuiltInMetricsRecorder(
-            openTelemetry,
-            builtInMetricsProvider.createDefaultAttributes(databaseName.getDatabase()));
+    return new BuiltInMetricsRecorder(
+        openTelemetry, builtInMetricsProvider.createDefaultAttributes(databaseName.getDatabase()));
+  }
 
-    AdapterOptions.Builder opBuilder =
-        new AdapterOptions.Builder()
-            .spannerEndpoint(DEFAULT_SPANNER_ENDPOINT)
-            .tcpPort(port)
-            .databaseUri(databaseUri)
-            .inetAddress(inetAddress)
-            .numGrpcChannels(numGrpcChannels)
-            .metricsRecorder(metricsRecorder);
-    if (maxCommitDelayProperty != null) {
-      opBuilder.maxCommitDelay(Duration.ofMillis(Integer.parseInt(maxCommitDelayProperty)));
-    }
-
-    Adapter adapter = new Adapter(opBuilder.build());
+  private void startAdapter(ListenerConfig config) throws IOException {
     LOG.info(
         "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels, max commit"
             + " delay of {} and built-in metrics enabled: {}",
-        databaseUri,
-        inetAddress,
-        port,
-        numGrpcChannels,
-        maxCommitDelayProperty,
-        enableBuiltInMetrics);
-    Launcher launcher = new Launcher(adapter, healthCheckServer);
-    launcher.launch();
+        config.databaseUri,
+        config.hostAddress,
+        config.port,
+        config.numGrpcChannels,
+        config.maxCommitDelayMillis,
+        config.enableBuiltInMetrics);
 
-    try {
-      Thread.currentThread().join();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+    final DatabaseName databaseName = DatabaseName.parse(config.databaseUri);
+    final BuiltInMetricsRecorder metricsRecorder = createMetricsRecorder(config, databaseName);
+    final AdapterOptions options = buildAdapterOptions(config, metricsRecorder);
+
+    final Adapter adapter = adapterFactory.createAdapter(options);
+    adapters.add(adapter);
+    adapter.start();
+  }
+
+  /** Encapsulates the full configuration for the Launcher. */
+  private static final class LauncherConfig {
+    private final List<ListenerConfig> listeners;
+    @Nullable private final HealthCheckConfig healthCheckConfig;
+
+    private LauncherConfig(
+        List<ListenerConfig> listeners, @Nullable HealthCheckConfig healthCheckConfig) {
+      this.listeners = listeners;
+      this.healthCheckConfig = healthCheckConfig;
+    }
+
+    static LauncherConfig fromUserConfigs(UserConfigs userConfigs) throws UnknownHostException {
+      if (userConfigs == null) {
+        throw new IllegalArgumentException("UserConfigs cannot be null.");
+      }
+      if (userConfigs.getListeners() == null || userConfigs.getListeners().isEmpty()) {
+        throw new IllegalArgumentException("No listeners defined in the configuration.");
+      }
+
+      final String globalSpannerEndpoint;
+      final boolean globalEnableBuiltInMetrics;
+      HealthCheckConfig healthCheckConfig = null;
+
+      if (userConfigs.getGlobalClientConfigs() != null) {
+        globalSpannerEndpoint =
+            userConfigs.getGlobalClientConfigs().getSpannerEndpoint() != null
+                ? userConfigs.getGlobalClientConfigs().getSpannerEndpoint()
+                : DEFAULT_SPANNER_ENDPOINT;
+        globalEnableBuiltInMetrics =
+            userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics() != null
+                && userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics();
+        if (userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint() != null) {
+          healthCheckConfig =
+              HealthCheckConfig.fromEndpointString(
+                  userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint());
+        }
+      } else {
+        globalSpannerEndpoint = DEFAULT_SPANNER_ENDPOINT;
+        globalEnableBuiltInMetrics = false;
+      }
+
+      List<ListenerConfig> listenerConfigs = new ArrayList<>();
+      for (ListenerConfigs listener : userConfigs.getListeners()) {
+        validateListenerConfig(listener);
+        listenerConfigs.add(
+            ListenerConfig.fromListenerConfigs(
+                listener, globalSpannerEndpoint, globalEnableBuiltInMetrics));
+      }
+
+      return new LauncherConfig(listenerConfigs, healthCheckConfig);
+    }
+
+    static LauncherConfig fromProperties(Map<String, String> properties)
+        throws UnknownHostException {
+      String databaseUri = properties.get(DATABASE_URI_PROP_KEY);
+      if (databaseUri == null) {
+        throw new IllegalArgumentException(
+            "Spanner database URI not set. Please set it using the '"
+                + DATABASE_URI_PROP_KEY
+                + "' property.");
+      }
+
+      ListenerConfig listenerConfig = ListenerConfig.fromProperties(properties);
+      HealthCheckConfig healthCheckConfig = HealthCheckConfig.fromProperties(properties);
+
+      return new LauncherConfig(Collections.singletonList(listenerConfig), healthCheckConfig);
+    }
+
+    private static void validateListenerConfig(ListenerConfigs listener) {
+      if (listener.getSpanner() == null
+          || Strings.isNullOrEmpty(listener.getSpanner().getDatabaseUri())) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Listener '%s' on port %s must have a non-empty 'spanner.databaseUri' defined.",
+                listener.getName(), listener.getPort()));
+      }
+    }
+  }
+
+  /** Encapsulates the configuration for a single Adapter listener. */
+  private static final class ListenerConfig {
+    private final String databaseUri;
+    private final InetAddress hostAddress;
+    private final int port;
+    private final String spannerEndpoint;
+    private final int numGrpcChannels;
+    @Nullable private final Integer maxCommitDelayMillis;
+    private final boolean enableBuiltInMetrics;
+
+    private ListenerConfig(
+        String databaseUri,
+        InetAddress hostAddress,
+        int port,
+        String spannerEndpoint,
+        int numGrpcChannels,
+        @Nullable Integer maxCommitDelayMillis,
+        boolean enableBuiltInMetrics) {
+      this.databaseUri = databaseUri;
+      this.hostAddress = hostAddress;
+      this.port = port;
+      this.spannerEndpoint = spannerEndpoint;
+      this.numGrpcChannels = numGrpcChannels;
+      this.maxCommitDelayMillis = maxCommitDelayMillis;
+      this.enableBuiltInMetrics = enableBuiltInMetrics;
+    }
+
+    static ListenerConfig fromListenerConfigs(
+        ListenerConfigs listener, String globalSpannerEndpoint, boolean globalEnableBuiltInMetrics)
+        throws UnknownHostException {
+      String host = listener.getHost() != null ? listener.getHost() : DEFAULT_HOST;
+      int port = listener.getPort() != null ? listener.getPort() : DEFAULT_PORT;
+      int numGrpcChannels =
+          listener.getSpanner().getSession() != null
+              ? listener.getSpanner().getSession().getNumGrpcChannels()
+              : DEFAULT_NUM_GRPC_CHANNELS;
+      Integer maxCommitDelayMillis =
+          listener.getSpanner().getOperation() != null
+              ? listener.getSpanner().getOperation().getMaxCommitDelayMillis()
+              : null;
+
+      return new ListenerConfig(
+          listener.getSpanner().getDatabaseUri(),
+          InetAddress.getByName(host),
+          port,
+          globalSpannerEndpoint,
+          numGrpcChannels,
+          maxCommitDelayMillis,
+          globalEnableBuiltInMetrics);
+    }
+
+    static ListenerConfig fromProperties(Map<String, String> properties)
+        throws UnknownHostException {
+      String host = properties.getOrDefault(HOST_PROP_KEY, DEFAULT_HOST);
+      int port =
+          Integer.parseInt(properties.getOrDefault(PORT_PROP_KEY, String.valueOf(DEFAULT_PORT)));
+      int numGrpcChannels =
+          Integer.parseInt(
+              properties.getOrDefault(
+                  NUM_GRPC_CHANNELS_PROP_KEY, String.valueOf(DEFAULT_NUM_GRPC_CHANNELS)));
+      String maxCommitDelayProperty = properties.get(MAX_COMMIT_DELAY_PROP_KEY);
+      Integer maxCommitDelayMillis =
+          maxCommitDelayProperty != null ? Integer.parseInt(maxCommitDelayProperty) : null;
+      boolean enableBuiltInMetrics =
+          Boolean.parseBoolean(properties.getOrDefault(ENABLE_BUILTIN_METRICS_PROP_KEY, "false"));
+
+      return new ListenerConfig(
+          properties.get(DATABASE_URI_PROP_KEY),
+          InetAddress.getByName(host),
+          port,
+          DEFAULT_SPANNER_ENDPOINT,
+          numGrpcChannels,
+          maxCommitDelayMillis,
+          enableBuiltInMetrics);
+    }
+  }
+
+  /** Encapsulates the configuration for the health check server. */
+  private static final class HealthCheckConfig {
+    private final InetAddress hostAddress;
+    private final int port;
+
+    private HealthCheckConfig(InetAddress hostAddress, int port) {
+      this.hostAddress = hostAddress;
+      this.port = port;
+    }
+
+    static HealthCheckConfig fromEndpointString(String endpoint) throws UnknownHostException {
+      String[] parts = endpoint.split(":");
+      if (parts.length != 2) {
+        throw new IllegalArgumentException(
+            "Invalid health check endpoint format '" + endpoint + "'. Expected 'host:port'.");
+      }
+      String host = parts[0];
+      int port = parsePort(parts[1]);
+      return new HealthCheckConfig(InetAddress.getByName(host), port);
+    }
+
+    @Nullable
+    static HealthCheckConfig fromProperties(Map<String, String> properties)
+        throws UnknownHostException {
+      String healthCheckPortStr = properties.get(HEALTH_CHECK_PORT_PROP_KEY);
+      if (healthCheckPortStr == null) {
+        return null;
+      }
+      String host = properties.getOrDefault(HOST_PROP_KEY, DEFAULT_HOST);
+      int port = parsePort(healthCheckPortStr);
+      return new HealthCheckConfig(InetAddress.getByName(host), port);
+    }
+
+    private static int parsePort(String portStr) {
+      try {
+        int port = Integer.parseInt(portStr);
+        if (port < 0 || port > 65535) {
+          throw new IllegalArgumentException(
+              String.format("Invalid health check port '%s'. Must be between 0 and 65535", port));
+        }
+        return port;
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException(
+            String.format("Invalid health check port '%s'. Must be a number.", portStr), e);
+      }
     }
   }
 }

@@ -148,7 +148,43 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
 
     This will create an executable jar file `spanner-cassandra-launcher.jar` inside the folder `google-cloud-spanner-cassandra/target`.
 
-* Run the jar using the command:
+* Run the jar using one of the following methods:
+
+    **1. Using a YAML Configuration File (Recommended for Production)**
+
+    For production and complex setups, it is recommended to use a YAML file to configure the adapter. This method supports multiple listeners and global settings.
+
+    Create a `config.yaml` file with the following structure:
+    ```yaml
+    globalClientConfigs:
+      spannerEndpoint: "spanner.googleapis.com:443"
+      enableBuiltInMetrics: true
+      healthCheckEndpoint: "127.0.0.1:8080"
+    listeners:
+      - name: "listener_1"
+        host: "127.0.0.1"
+        port: 9042
+        spanner:
+          databaseUri: "projects/p/instances/i/databases/d1"
+          session:
+            numGrpcChannels: 4
+          operation:
+            maxCommitDelayMillis: 10
+      - name: "listener_2"
+        host: "127.0.0.1"
+        port: 9043
+        spanner:
+          databaseUri: "projects/p/instances/i/databases/d2"
+    ```
+
+    Then, run the launcher with the `-DconfigFilePath` system property:
+    ```bash
+    java -DconfigFilePath=/path/to/config.yaml -jar path/to/your/spanner-cassandra-launcher.jar
+    ```
+
+    **2. Using System Properties (for a single listener)**
+
+    For simpler setups or quick testing, you can provide the configuration via system properties. This method only supports a single adapter listener.
 
     ```bash
     java -DdatabaseUri=projects/my-project/instances/my-instance/databases/my-database \
@@ -159,9 +195,16 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
     -jar path/to/your/spanner-cassandra-launcher.jar
     ```
 
-    * Replace the value of `-DdatabaseUri` with your Spanner database URI.
-    * You can omit `-Dhost` to use the default `0.0.0.0`, omit `-Dport` to use the default `9042`, and omit `-DnumGrpcChannels` to use the default `4`.
-    * `-DhealthCheckPort` is optional. If specified, a health check endpoint will be started on same IP address as that of the client on the specified port at url `/debug/health`. The health check endpoint will return HTTP status `200: OK` if the client is up and running, and `503: Service Unavailable` otherwise. The health check endpoint is NOT enabled by default.
+    **Configuration Notes:**
+
+    * **Database URI**: You must specify the Spanner database URI. This is done via the `databaseUri` property in YAML or the `-DdatabaseUri` system property.
+    * **Host**: The default host is `0.0.0.0`. This can be overridden with the `host` property in YAML or `-Dhost`.
+    * **Port**: The default port is `9042`. This can be overridden with the `port` property in YAML or `-Dport`.
+    * **gRPC Channels**: The default number of gRPC channels is `4`. This can be overridden with `numGrpcChannels` in YAML or `-DnumGrpcChannels`.
+    * **Health Check**: You can optionally enable a health check endpoint.
+        *   In YAML, set `healthCheckEndpoint` to a `host:port` value (e.g., "127.0.0.1:8080").
+        *   With system properties, use `-DhealthCheckPort` and specify a port. The host will default to the adapter's host.
+        *   When enabled, the endpoint is available at `/debug/health` and returns HTTP `200 OK` if the client is running, or `503 Service Unavailable` otherwise. The health check is disabled by default.
 
 ## View and manage client-side metrics
 
