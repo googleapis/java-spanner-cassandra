@@ -26,11 +26,11 @@ import com.datastax.oss.protocol.internal.response.Error;
 import com.datastax.oss.protocol.internal.response.Supported;
 import com.datastax.oss.protocol.internal.response.error.Unprepared;
 import com.google.api.core.InternalApi;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import java.util.Collections;
 
 /**
  * Utility class for creating specific types of response frames used in the server protocol, encoded
@@ -53,8 +53,8 @@ public final class MessageUtils {
   private static final Supported SUPPORTED_MESSAGE =
       new Supported(
           ImmutableMap.of(
-              "CQL_VERSION", Collections.singletonList("3.0.0"),
-              "COMPRESSION", Collections.emptyList()));
+              "CQL_VERSION", ImmutableList.of("3.0.0"),
+              "COMPRESSION", ImmutableList.of()));
 
   private static final FrameCodec<ByteBuf> serverFrameCodec =
       FrameCodec.defaultServer(
@@ -112,7 +112,7 @@ public final class MessageUtils {
   public static ByteString messageResponse(int streamId, Message message) {
     Frame responseFrame =
         Frame.forResponse(
-            PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, Collections.emptyList(), message);
+            PROTOCOL_VERSION, streamId, null, Frame.NO_PAYLOAD, ImmutableList.of(), message);
     ByteBuf responseBuf = serverFrameCodec.encode(responseFrame);
     ByteString response = ByteString.copyFrom(responseBuf.nioBuffer());
     responseBuf.release();

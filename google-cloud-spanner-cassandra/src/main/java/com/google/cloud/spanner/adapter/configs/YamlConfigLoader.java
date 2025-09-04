@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -35,6 +36,7 @@ public class YamlConfigLoader {
    * @param inputStream The input stream containing the YAML data.
    * @return A {@link UserConfigs} object representing the parsed configuration.
    */
+  @Nullable
   public static UserConfigs load(InputStream inputStream) {
     Yaml yaml = new Yaml();
     Map<String, Object> yamlMap = yaml.load(inputStream);
