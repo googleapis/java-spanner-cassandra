@@ -16,6 +16,10 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter.configs;
 
+import static com.google.cloud.spanner.adapter.configs.ConfigConstants.DATABASE_URI_PROP_KEY;
+import static com.google.cloud.spanner.adapter.configs.ConfigConstants.MAX_COMMIT_DELAY_PROP_KEY;
+import static com.google.cloud.spanner.adapter.configs.ConfigConstants.NUM_GRPC_CHANNELS_PROP_KEY;
+
 import java.util.Map;
 
 /**
@@ -34,9 +38,9 @@ public class SpannerConfigs {
   }
 
   public static SpannerConfigs fromMap(Map<String, Object> yamlMap) {
-    String databaseUri = (String) yamlMap.get("databaseUri");
-    Integer numGrpcChannels = (Integer) yamlMap.get("numGrpcChannels");
-    Integer maxCommitDelayMillis = (Integer) yamlMap.get("maxCommitDelayMillis");
+    String databaseUri = (String) yamlMap.get(DATABASE_URI_PROP_KEY);
+    Integer numGrpcChannels = (Integer) yamlMap.get(NUM_GRPC_CHANNELS_PROP_KEY);
+    Integer maxCommitDelayMillis = (Integer) yamlMap.get(MAX_COMMIT_DELAY_PROP_KEY);
 
     return new SpannerConfigs(databaseUri, numGrpcChannels, maxCommitDelayMillis);
   }
