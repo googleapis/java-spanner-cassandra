@@ -152,26 +152,7 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
 
     **1. Using a YAML Configuration File (Recommended for Production)**
 
-    For production setups, it is recommended to use a YAML file to configure the adapter. This method supports multiple listeners and global settings. See the [Configuration Options](docs/config-options.md) for a complete list of all supported options.
-
-    Create a `config.yaml` file with the following structure:
-    ```yaml
-    globalClientConfigs:
-      enableBuiltInMetrics: true
-      healthCheckEndpoint: "127.0.0.1:8080"
-    listeners:
-      - name: "listener_1"
-        host: "127.0.0.1"
-        port: 9042
-        spanner:
-          databaseUri: "projects/p/instances/i/databases/d1"
-          numGrpcChannels: 4
-      - name: "listener_2"
-        host: "127.0.0.1"
-        port: 9043
-        spanner:
-          databaseUri: "projects/p/instances/i/databases/d2"
-    ```
+    For production setups, it is recommended to use a YAML file to configure the adapter. This method supports multiple listeners and global settings. See the [Configuration Options](docs/config-options.md) for a complete list of all supported options. An example `config.yaml` file can be found [here](docs/config-options.md#example-configyaml).
 
     Then, run the launcher with the `-DconfigFilePath` system property:
     ```bash
