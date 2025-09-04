@@ -124,11 +124,11 @@ public final class SpannerCqlRetryPolicy implements RetryPolicy {
     // nothing to do
   }
 
-  private RetryDecision retryOrRethrow(int retryCount, String error_msg) {
+  private RetryDecision retryOrRethrow(int retryCount, String errorMsg) {
     final RetryDecision decision =
         (retryCount < DEFAULT_MAX_RETRY_COUNT) ? RetryDecision.RETRY_SAME : RetryDecision.RETHROW;
     if (decision == RetryDecision.RETRY_SAME && LOG.isTraceEnabled()) {
-      LOG.trace(error_msg, logPrefix, retryCount);
+      LOG.trace(errorMsg, logPrefix, retryCount);
     }
     return decision;
   }

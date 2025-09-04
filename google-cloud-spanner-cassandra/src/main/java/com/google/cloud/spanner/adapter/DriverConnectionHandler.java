@@ -223,7 +223,7 @@ final class DriverConnectionHandler implements Runnable {
     }
     final long latency = Duration.between(startTime, Instant.now()).toMillis();
     metricsRecorder.recordOperationCount(1);
-    metricsRecorder.recordOperationLatency(latency);
+    metricsRecorder.recordOperationLatency((double) latency);
   }
 
   private static int readNBytesJava8(InputStream in, byte[] b, int off, int len)
@@ -352,7 +352,7 @@ final class DriverConnectionHandler implements Runnable {
       case ProtocolConstants.Opcode.BATCH:
         return prepareBatchMessage((Batch) decodeFrame(ctx.payload).message, ctx.streamId);
       case ProtocolConstants.Opcode.QUERY:
-        return prepareQueryMessage((Query) decodeFrame(ctx.payload).message, ctx.streamId);
+        return prepareQueryMessage((Query) decodeFrame(ctx.payload).message);
       default:
         return new PreparePayloadResult(DEFAULT_CONTEXT);
     }
@@ -394,7 +394,7 @@ final class DriverConnectionHandler implements Runnable {
     return new PreparePayloadResult(DEFAULT_CONTEXT_WITH_LAR, attachments, attachmentErrorResponse);
   }
 
-  private PreparePayloadResult prepareQueryMessage(Query message, int streamId) {
+  private PreparePayloadResult prepareQueryMessage(Query message) {
     ApiCallContext context;
     Map<String, String> attachments = Collections.emptyMap();
     if (startsWith(message.query, "SELECT")) {

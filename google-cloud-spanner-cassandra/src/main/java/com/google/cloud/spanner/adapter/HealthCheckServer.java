@@ -15,6 +15,8 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -22,7 +24,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,7 +84,7 @@ final class HealthCheckServer {
 
     private void sendResponse(HttpExchange exchange, int statusCode, String response)
         throws IOException {
-      byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+      byte[] responseBytes = response.getBytes(UTF_8);
       exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
       exchange.sendResponseHeaders(statusCode, responseBytes.length);
       try (OutputStream os = exchange.getResponseBody()) {
