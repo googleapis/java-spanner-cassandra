@@ -24,8 +24,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockConstruction;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -35,15 +33,11 @@ import com.google.cloud.spanner.adapter.configs.GlobalClientConfigs;
 import com.google.cloud.spanner.adapter.configs.ListenerConfigs;
 import com.google.cloud.spanner.adapter.configs.SpannerConfigs;
 import com.google.cloud.spanner.adapter.configs.UserConfigs;
-import com.google.cloud.spanner.adapter.configs.YamlConfigLoader;
 import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.PrintStream;
 import java.net.InetAddress;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.After;
@@ -53,15 +47,14 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
-import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class LauncherTest {
 
   private static final String DEFAULT_DATABASE_URI = "projects/p/instances/i/databases/d";
-  private static final String CONFIG_FILE_PROP_KEY = "configFilePath";
 
   @Mock private Launcher.AdapterFactory mockAdapterFactory;
   @Mock private Adapter mockAdapter;
@@ -90,11 +83,7 @@ public class LauncherTest {
   }
 
   @Test
-  public void testRun_withValidConfigFile_startsMultipleAdapters() throws Exception {
-    String configFilePath = "any/path/to/config.yaml";
-    Map<String, String> properties = new HashMap<>();
-    properties.put(CONFIG_FILE_PROP_KEY, configFilePath);
-
+  public void testRun_withMultipleListeners_startsMultipleAdapters() throws Exception {
     UserConfigs userConfigs =
         new UserConfigs(
             new GlobalClientConfigs("spanner.googleapis.com:443", true, "127.0.0.1:8080"),
@@ -103,23 +92,17 @@ public class LauncherTest {
                     "listener_1",
                     "127.0.0.1",
                     9042,
-                    new SpannerConfigs("projects/p/instances/i/databases/d-1-config-test", 4, 100)),
+                    new SpannerConfigs(
+                        "projects/p/instances/i/databases/d-1-config-test", 4, 100)),
                 new ListenerConfigs(
                     "listener_2",
                     "0.0.0.0",
                     9043,
                     new SpannerConfigs(
                         "projects/p/instances/i/databases/d-2-config-test", 8, null))));
+    LauncherConfig config = LauncherConfig.fromUserConfigs(userConfigs);
 
-    try (MockedStatic<Runtime> mockedRuntime = mockStatic(Runtime.class);
-        MockedStatic<YamlConfigLoader> mockedLoader = mockStatic(YamlConfigLoader.class);
-        MockedConstruction<FileInputStream> unused = mockConstruction(FileInputStream.class)) {
-      mockedRuntime.when(Runtime::getRuntime).thenReturn(mock(Runtime.class));
-      mockedLoader
-          .when(() -> YamlConfigLoader.load(any(InputStream.class)))
-          .thenReturn(userConfigs);
-      launcher.run(properties);
-    }
+    launcher.run(config);
 
     verify(mockAdapterFactory, times(2)).createAdapter(adapterOptionsCaptor.capture());
     verify(mockAdapterFactory, times(1)).createHealthCheckServer(any(), eq(8080));
@@ -141,7 +124,7 @@ public class LauncherTest {
   }
 
   @Test
-  public void testRun_withSystemProperties_startsAdapterWithOptions() throws Exception {
+  public void testRun_withSingleListener_startsAdapterWithOptions() throws Exception {
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
     properties.put("host", "127.0.0.1");
@@ -150,11 +133,9 @@ public class LauncherTest {
     properties.put("maxCommitDelayMillis", "100");
     properties.put("enableBuiltInMetrics", "true");
     properties.put("healthCheckPort", "8080");
+    LauncherConfig config = LauncherConfig.fromProperties(properties);
 
-    try (MockedStatic<Runtime> mockedRuntime = mockStatic(Runtime.class)) {
-      mockedRuntime.when(Runtime::getRuntime).thenReturn(mock(Runtime.class));
-      launcher.run(properties);
-    }
+    launcher.run(config);
 
     verify(mockAdapterFactory, times(1)).createAdapter(adapterOptionsCaptor.capture());
     verify(mockAdapterFactory, times(1)).createHealthCheckServer(any(), eq(8080));
@@ -174,11 +155,9 @@ public class LauncherTest {
   public void testRun_withNoHealthCheckPort_noHealthCheckServerIsCreated() throws Exception {
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
+    LauncherConfig config = LauncherConfig.fromProperties(properties);
 
-    try (MockedStatic<Runtime> mockedRuntime = mockStatic(Runtime.class)) {
-      mockedRuntime.when(Runtime::getRuntime).thenReturn(mock(Runtime.class));
-      launcher.run(properties);
-    }
+    launcher.run(config);
 
     verify(mockAdapterFactory, times(1)).createAdapter(any(AdapterOptions.class));
     verify(mockAdapter, times(1)).start();
@@ -188,75 +167,33 @@ public class LauncherTest {
   }
 
   @Test
-  public void testRun_withMissingDatabaseUri_throwsIllegalArgumentException() {
-    Map<String, String> properties = Collections.emptyMap();
-
-    IllegalArgumentException thrown =
-        assertThrows(IllegalArgumentException.class, () -> launcher.run(properties));
-    assertThat(thrown.getMessage()).contains("Spanner database URI not set.");
-  }
-
-  @Test
-  public void testRun_withInvalidHealthCheckPort_throwsIllegalArgumentException() {
-    Map<String, String> properties = new HashMap<>();
-    properties.put("databaseUri", DEFAULT_DATABASE_URI);
-    properties.put("healthCheckPort", "99999");
-
-    IllegalArgumentException thrown =
-        assertThrows(IllegalArgumentException.class, () -> launcher.run(properties));
-    assertThat(thrown.getMessage()).contains("Invalid health check port '99999'");
-  }
-
-  @Test
-  public void testRun_withInvalidHealthCheckEndpointInConfigFile_throwsIllegalArgumentException() {
-    String configFilePath = "any/path/to/config.yaml";
-    Map<String, String> properties = new HashMap<>();
-    properties.put(CONFIG_FILE_PROP_KEY, configFilePath);
-
-    try (MockedStatic<YamlConfigLoader> mockedLoader = mockStatic(YamlConfigLoader.class);
-        MockedConstruction<FileInputStream> unused = mockConstruction(FileInputStream.class)) {
-      mockedLoader
-          .when(() -> YamlConfigLoader.load(any(InputStream.class)))
-          .thenReturn(new UserConfigs(null, null));
-      IllegalArgumentException thrown =
-          assertThrows(IllegalArgumentException.class, () -> launcher.run(properties));
-      assertThat(thrown.getMessage()).contains("No listeners defined in the configuration.");
-    }
-  }
-
-  @Test
   public void testRun_whenAdapterStartFails_healthCheckIsNotReady() throws Exception {
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
     properties.put("healthCheckPort", "8080");
+    LauncherConfig config = LauncherConfig.fromProperties(properties);
     doThrow(new RuntimeException("Failed to start adapter")).when(mockAdapter).start();
 
-    assertThrows(IllegalStateException.class, () -> launcher.run(properties));
+    assertThrows(IllegalStateException.class, () -> launcher.run(config));
     verify(mockHealthCheckServer).start();
     verify(mockHealthCheckServer).setReady(false);
   }
 
   @Test
   public void testShutdownHook_stopsAllInstances() throws Exception {
-    when(mockAdapterFactory.createAdapter(any())).thenReturn(mockAdapter);
-    when(mockAdapterFactory.createHealthCheckServer(any(), anyInt()))
-        .thenReturn(mockHealthCheckServer);
-
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
     properties.put("healthCheckPort", "8080");
+    LauncherConfig config = LauncherConfig.fromProperties(properties);
 
-    try (MockedStatic<Runtime> mockedRuntime = mockStatic(Runtime.class)) {
-      Runtime mockRuntime = mock(Runtime.class);
-      mockedRuntime.when(Runtime::getRuntime).thenReturn(mockRuntime);
+    Runtime mockRuntime = mock(Runtime.class);
 
-      launcher.run(properties);
+    launcher.run(config);
 
-      verify(mockRuntime).addShutdownHook(shutdownHookCaptor.capture());
-      shutdownHookCaptor.getValue().run();
+    verify(mockRuntime).addShutdownHook(shutdownHookCaptor.capture());
+    shutdownHookCaptor.getValue().run();
 
-      verify(mockAdapter, times(1)).stop();
-      verify(mockHealthCheckServer, times(1)).stop();
-    }
+    verify(mockAdapter, times(1)).stop();
+    verify(mockHealthCheckServer, times(1)).stop();
   }
 }
