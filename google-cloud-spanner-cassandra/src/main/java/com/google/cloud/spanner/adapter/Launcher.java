@@ -138,6 +138,8 @@ public class Launcher {
     try {
       Thread.currentThread().join();
     } catch (InterruptedException e) {
+      LOG.info("Main thread interrupted, shutting down.");
+      launcher.shutdown();
       Thread.currentThread().interrupt();
     }
   }
@@ -174,6 +176,7 @@ public class Launcher {
     }
 
     if (!allAdaptersStarted) {
+      shutdown();
       throw new IllegalStateException("One or more adapters failed to start: " + failedListeners);
     }
 
@@ -182,18 +185,28 @@ public class Launcher {
         .addShutdownHook(
             new Thread(
                 () -> {
-                  if (healthCheckServer != null) {
-                    healthCheckServer.stop();
-                  }
-                  adapters.forEach(
-                      adapter -> {
-                        try {
-                          adapter.stop();
-                        } catch (IOException e) {
-                          LOG.warn("Error while stopping Adapter: " + e.getMessage());
-                        }
-                      });
+                  LOG.info("Shutdown hook triggered. Stopping all adapters.");
+                  shutdown();
                 }));
+  }
+
+  /**
+   * Stops all running adapters and the health check server. This method is automatically called by
+   * a shutdown hook when the JVM terminates, but can also be called programmatically for a graceful
+   * shutdown.
+   */
+  public void shutdown() {
+    if (healthCheckServer != null) {
+      healthCheckServer.stop();
+    }
+    adapters.forEach(
+        adapter -> {
+          try {
+            adapter.stop();
+          } catch (IOException e) {
+            LOG.warn("Error while stopping Adapter: " + e.getMessage());
+          }
+        });
   }
 
   private void startHealthCheckServer(HealthCheckConfig config) throws IOException {

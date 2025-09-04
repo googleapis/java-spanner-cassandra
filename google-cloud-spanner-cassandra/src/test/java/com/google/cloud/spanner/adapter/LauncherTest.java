@@ -23,7 +23,6 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -47,8 +46,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -92,8 +89,7 @@ public class LauncherTest {
                     "listener_1",
                     "127.0.0.1",
                     9042,
-                    new SpannerConfigs(
-                        "projects/p/instances/i/databases/d-1-config-test", 4, 100)),
+                    new SpannerConfigs("projects/p/instances/i/databases/d-1-config-test", 4, 5)),
                 new ListenerConfigs(
                     "listener_2",
                     "0.0.0.0",
@@ -177,6 +173,9 @@ public class LauncherTest {
     assertThrows(IllegalStateException.class, () -> launcher.run(config));
     verify(mockHealthCheckServer).start();
     verify(mockHealthCheckServer).setReady(false);
+    // Verify that the shutdown logic was called to clean up.
+    verify(mockHealthCheckServer, times(1)).stop();
+    verify(mockAdapter, times(1)).stop();
   }
 
   @Test
@@ -186,12 +185,8 @@ public class LauncherTest {
     properties.put("healthCheckPort", "8080");
     LauncherConfig config = LauncherConfig.fromProperties(properties);
 
-    Runtime mockRuntime = mock(Runtime.class);
-
     launcher.run(config);
-
-    verify(mockRuntime).addShutdownHook(shutdownHookCaptor.capture());
-    shutdownHookCaptor.getValue().run();
+    launcher.shutdown();
 
     verify(mockAdapter, times(1)).stop();
     verify(mockHealthCheckServer, times(1)).stop();
