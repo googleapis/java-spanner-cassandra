@@ -82,6 +82,29 @@ public class LauncherConfigParserTest {
   }
 
   @Test
+  public void testParse_withConfigFileAndOtherParams_usesConfigFile() throws Exception {
+    String configFile = getClass().getClassLoader().getResource("valid-config.yaml").getFile();
+    Map<String, String> properties = new HashMap<>();
+    properties.put("configFilePath", configFile);
+    // The following properties should be ignored, as the config file takes precedence.
+    properties.put("databaseUri", "projects/p/instances/i/databases/d-from-props");
+    properties.put("port", "9044");
+
+    LauncherConfig config = LauncherConfigParser.parse(properties);
+
+    assertThat(config.getListeners()).hasSize(2);
+    ListenerConfig listenerConfig1 = config.getListeners().get(0);
+    assertThat(listenerConfig1.getDatabaseUri())
+        .isEqualTo("projects/my-project/instances/my-instance/databases/my-database");
+    assertThat(listenerConfig1.getPort()).isEqualTo(9042);
+
+    ListenerConfig listenerConfig2 = config.getListeners().get(1);
+    assertThat(listenerConfig2.getDatabaseUri())
+        .isEqualTo("projects/my-project/instances/my-instance/databases/my-database-2");
+    assertThat(listenerConfig2.getPort()).isEqualTo(9043);
+  }
+
+  @Test
   public void testParse_withSystemProperties() throws Exception {
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
