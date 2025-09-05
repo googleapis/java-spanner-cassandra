@@ -23,7 +23,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.UnknownHostException;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,8 +53,12 @@ public class LauncherConfigParser {
     }
   }
 
-  static LauncherConfig parse(InputStream inputStream) throws UnknownHostException {
-    UserConfigs userConfigs = YamlConfigLoader.load(inputStream);
-    return LauncherConfig.fromUserConfigs(userConfigs);
+  static LauncherConfig parse(InputStream inputStream) throws IOException {
+    try {
+      UserConfigs userConfigs = YamlConfigLoader.load(inputStream);
+      return LauncherConfig.fromUserConfigs(userConfigs);
+    } catch (Exception e) {
+      throw new IOException("Failed to parse configuration from input stream", e);
+    }
   }
 }

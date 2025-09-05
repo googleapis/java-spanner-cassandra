@@ -28,6 +28,7 @@ import com.google.cloud.spanner.adapter.configs.ListenerConfigs;
 import com.google.cloud.spanner.adapter.configs.SpannerConfigs;
 import com.google.cloud.spanner.adapter.configs.UserConfigs;
 import com.google.cloud.spanner.adapter.configs.YamlConfigLoader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -131,17 +132,40 @@ public class LauncherConfigParserTest {
   }
 
   @Test
-  public void testParse_withInvalidConfigFile_throwsIllegalArgumentException()
-      throws UnknownHostException {
+  public void testParse_withInvalidConfigFile_throwsIOException() {
     try (MockedStatic<YamlConfigLoader> mockedLoader = mockStatic(YamlConfigLoader.class)) {
       mockedLoader
           .when(() -> YamlConfigLoader.load(any(InputStream.class)))
           .thenReturn(new UserConfigs(null, null));
-      IllegalArgumentException thrown =
+      IOException thrown =
           assertThrows(
-              IllegalArgumentException.class,
-              () -> LauncherConfigParser.parse(mock(InputStream.class)));
-      assertThat(thrown.getMessage()).contains("No listeners defined in the configuration.");
+              IOException.class, () -> LauncherConfigParser.parse(mock(InputStream.class)));
+      assertThat(thrown.getCause()).isInstanceOf(IllegalArgumentException.class);
+      assertThat(thrown.getCause().getMessage())
+          .contains("No listeners defined in the configuration.");
+    }
+  }
+
+  @Test
+  public void testParse_withUnknownHost_throwsIOException() throws IOException {
+    UserConfigs userConfigs =
+        new UserConfigs(
+            new GlobalClientConfigs("spanner.googleapis.com:443", true, "unknown-host:8080"),
+            Collections.singletonList(
+                new ListenerConfigs(
+                    "listener_1",
+                    "unknown-host",
+                    9042,
+                    new SpannerConfigs(DEFAULT_DATABASE_URI, 4, 5))));
+    try (MockedStatic<YamlConfigLoader> mockedLoader = mockStatic(YamlConfigLoader.class)) {
+      mockedLoader
+          .when(() -> YamlConfigLoader.load(any(InputStream.class)))
+          .thenReturn(userConfigs);
+
+      IOException thrown =
+          assertThrows(
+              IOException.class, () -> LauncherConfigParser.parse(mock(InputStream.class)));
+      assertThat(thrown.getCause()).isInstanceOf(UnknownHostException.class);
     }
   }
 }

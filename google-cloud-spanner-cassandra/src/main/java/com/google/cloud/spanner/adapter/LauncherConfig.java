@@ -33,7 +33,8 @@ public final class LauncherConfig {
   private final List<ListenerConfig> listeners;
   @Nullable private final HealthCheckConfig healthCheckConfig;
 
-  LauncherConfig(List<ListenerConfig> listeners, @Nullable HealthCheckConfig healthCheckConfig) {
+  private LauncherConfig(
+      List<ListenerConfig> listeners, @Nullable HealthCheckConfig healthCheckConfig) {
     this.listeners = listeners;
     this.healthCheckConfig = healthCheckConfig;
   }
