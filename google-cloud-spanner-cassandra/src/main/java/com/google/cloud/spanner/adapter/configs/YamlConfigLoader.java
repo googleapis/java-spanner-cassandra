@@ -21,7 +21,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * A utility class for loading and parsing YAML configuration files into a {@link UserConfigs}
@@ -38,7 +40,7 @@ public class YamlConfigLoader {
    */
   @Nullable
   public static UserConfigs load(InputStream inputStream) {
-    Yaml yaml = new Yaml();
+    Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
     Map<String, Object> yamlMap = yaml.load(inputStream);
     if (yamlMap == null) {
       return null;
