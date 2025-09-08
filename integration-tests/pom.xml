@@ -95,6 +95,10 @@
                             </includes>
                             <forkCount>8</forkCount>
                             <reuseForks>true</reuseForks>
+                             <systemPropertyVariables>
+                                <logging.level.root>DEBUG</logging.level.root>
+                                <logging.level.com.google.cloud>TRACE</logging.level.com.google.cloud>
+                            </systemPropertyVariables>
                         </configuration>
                     </plugin>
                 </plugins>
