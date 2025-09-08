@@ -29,7 +29,7 @@
         <dependency>
             <groupId>com.google.cloud</groupId>
             <artifactId>google-cloud-spanner-cassandra</artifactId>
-            <version>0.5.0</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
+            <version>0.5.1-SNAPSHOT</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
         </dependency>
         <dependency>
             <groupId>org.apache.cassandra</groupId>
