@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.5.0...v0.6.0) (2025-09-09)
+
+
+### Features
+
+* Skip deployment for integration tests module ([#219](https://github.com/googleapis/java-spanner-cassandra/issues/219)) ([479ca0a](https://github.com/googleapis/java-spanner-cassandra/commit/479ca0a202b6e39522fb45e05c5224346ca4e5f6))
+
 ## [0.5.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.4.0...v0.5.0) (2025-09-06)
 
 
