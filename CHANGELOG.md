@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.6.0...v0.7.0) (2025-09-09)
+
+
+### Features
+
+* Add &lt;name&gt; to the google-cloud-spanner-cassandra module ([#222](https://github.com/googleapis/java-spanner-cassandra/issues/222)) ([fce916f](https://github.com/googleapis/java-spanner-cassandra/commit/fce916febbbb4a1fb7e2cf881047ba5f3482dcc6))
+
 ## [0.6.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.5.0...v0.6.0) (2025-09-09)
 
 
