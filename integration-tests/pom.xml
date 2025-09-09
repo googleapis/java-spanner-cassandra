@@ -12,12 +12,13 @@
     <groupId>com.google.cloud</groupId>
     <artifactId>spanner-cassandra-java-integration-tests</artifactId>
     <packaging>jar</packaging>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0-SNAPSHOT</version> <!-- This artifact should not be released -->
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <skipITs>false</skipITs> 
+        <maven.deploy.skip>true</maven.deploy.skip>  <!-- Skip deployment for this module -->
     </properties>
 
     <dependencies>
