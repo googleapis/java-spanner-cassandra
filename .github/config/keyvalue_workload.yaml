@@ -1,0 +1,23 @@
+description: "A simple read/write workload for the Spanner Cassandra adapter."
+
+blocks:
+  - name: main_read
+    params:
+      ratio: 6
+    statements:
+      - select_row: |
+          select * from keyvalue
+          where key={srch_key};
+        bindings:
+          srch_key: Uniform(1,100000) -> int
+
+  - name: main_write
+    params:
+      ratio: 4
+    statements:
+      - insert_row: |
+          insert into keyvalue (key, value)
+          values ({row_key}, {row_value});
+        bindings:
+          row_key: Uniform(1,10000000) -> int
+          row_value: FirstNames()
