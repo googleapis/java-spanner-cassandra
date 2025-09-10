@@ -7,7 +7,7 @@ on:
 env:
   NOSQLBENCH_JAR_URL: https://github.com/nosqlbench/nosqlbench/releases/download/5.17.9-release/nb5.jar
   NOSQLBENCH_JAR: /tmp/nb5.jar
-  NOSQLBENCH_WORKLOAD: ./.github/config/keyvalue_workload.yaml
+  NOSQLBENCH_WORKLOAD: ./.github/config/R60_W40_workload.yaml
   NOSQLBENCH_DRIVER_CONFIG: ./.github/config/driver.conf
 
 jobs:
