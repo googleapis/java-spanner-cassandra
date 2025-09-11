@@ -1,7 +1,8 @@
 name: NoSQLBench Daily Benchmark
 
-# TODO: Set a daily schedule once this workflow has been tested.
 on:
+  schedule:
+    - cron: '0 12 * * *' # Runs at 5:00 AM PST daily
   workflow_dispatch: # Enable manual runs
 
 env:
@@ -13,6 +14,7 @@ env:
 jobs:
   nosqlbench_benchmark:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       # Do not cancel other jobs in the matrix if one fails. This ensures that a
       # failure in the 'devel' environment does not prevent the 'prod' benchmark from running.
@@ -47,7 +49,8 @@ jobs:
           java -jar $NOSQLBENCH_JAR -v start workload=$NOSQLBENCH_WORKLOAD driver=cqld4 localdc=datacenter1 \
           cycles=50000 threads=5 host=127.0.0.1 port=9042 driverconfig=$NOSQLBENCH_DRIVER_CONFIG --progress console:10s
       - name: Notify on failure
-        if: failure()
+        # Timeouts trigger a cancellation, so we need to check for that as well.
+        if: failure() || cancelled()
         uses: actions/github-script@v7
         with:
           script: |
