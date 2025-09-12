@@ -27,7 +27,7 @@ if [ -z "$LAUNCHER_JAR" ]; then
 fi
 
 # Base parameters for the adapter.
-ADAPTER_PARAMS="-Dhost=127.0.0.1 -Dport=9042 -DhealthCheckPort=8080 -DdatabaseUri=$NOSQLBENCH_DATABASE_URI"
+ADAPTER_PARAMS="-Dhost=127.0.0.1 -Dport=9042 -DhealthCheckPort=8080 -DenableBuiltInMetrics=true -DdatabaseUri=$NOSQLBENCH_DATABASE_URI"
 
 # Add the Spanner endpoint parameter only for the 'devel' environment.
 # The MATRIX_ENVIRONMENT variable is passed from the GitHub Actions workflow.

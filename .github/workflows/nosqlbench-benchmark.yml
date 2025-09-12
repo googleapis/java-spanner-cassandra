@@ -14,7 +14,10 @@ env:
 jobs:
   nosqlbench_benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    timeout-minutes: 60
     strategy:
       # Do not cancel other jobs in the matrix if one fails. This ensures that a
       # failure in the 'devel' environment does not prevent the 'prod' benchmark from running.
