@@ -27,17 +27,25 @@ if [ -z "$LAUNCHER_JAR" ]; then
 fi
 
 # Base parameters for the adapter.
-ADAPTER_PARAMS="-Dhost=127.0.0.1 -Dport=9042 -DhealthCheckPort=8080 -DenableBuiltInMetrics=true -DdatabaseUri=$NOSQLBENCH_DATABASE_URI"
+ADAPTER_PARAMS=(
+  "-Dhost=127.0.0.1"
+  "-Dport=9042"
+  "-DhealthCheckPort=8080"
+  "-DenableBuiltInMetrics=true"
+  "-DdatabaseUri=$NOSQLBENCH_DATABASE_URI"
+  "-Dlogging.level.root=DEBUG"
+  "-Dlogging.level.com.google.cloud=TRACE"
+)
 
 # Add the Spanner endpoint parameter only for the 'devel' environment.
 # The MATRIX_ENVIRONMENT variable is passed from the GitHub Actions workflow.
 if [ "$MATRIX_ENVIRONMENT" = "devel" ]; then
-  ADAPTER_PARAMS="$ADAPTER_PARAMS -DspannerEndpoint=$SPANNER_ENDPOINT"
+  ADAPTER_PARAMS+=("-DspannerEndpoint=$SPANNER_ENDPOINT")
 fi
 
-echo "Starting adapter with params: $ADAPTER_PARAMS"
+echo "Starting adapter with params: ${ADAPTER_PARAMS[*]}"
 # Start the adapter in the background (&) so the workflow can proceed.
-java $ADAPTER_PARAMS -jar $LAUNCHER_JAR &
+java "${ADAPTER_PARAMS[@]}" -jar $LAUNCHER_JAR &
 
 # Health check logic.
 echo "Waiting for adapter to start..."
