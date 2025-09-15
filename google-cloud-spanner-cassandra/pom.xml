@@ -8,11 +8,11 @@
     <artifactId>google-cloud-spanner-cassandra</artifactId>
     <packaging>jar</packaging>
     <name>Google Cloud Spanner Cassandra</name>
-    <version>0.7.0</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
+    <version>0.7.1-SNAPSHOT</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
     <parent>
         <groupId>com.google.cloud</groupId>
         <artifactId>google-cloud-spanner-cassandra-parent</artifactId>
-        <version>0.7.0</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
+        <version>0.7.1-SNAPSHOT</version><!-- {x-version-update:google-cloud-spanner-cassandra:current} -->
     </parent>
 
     <dependencies>
