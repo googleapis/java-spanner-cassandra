@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.7.0...v1.0.0) (2025-09-25)
+
+
+### Miscellaneous Chores
+
+* Release version 1.0.0 ([#239](https://github.com/googleapis/java-spanner-cassandra/issues/239)) ([0b24095](https://github.com/googleapis/java-spanner-cassandra/commit/0b24095cc8dbd8d99e95660d91396684966707ed))
+
 ## [0.7.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.6.0...v0.7.0) (2025-09-09)
 
 

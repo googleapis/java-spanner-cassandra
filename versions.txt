@@ -1,4 +1,4 @@
 # Format:
 # module:released-version:current-version
 
-google-cloud-spanner-cassandra:0.7.0:0.7.1-SNAPSHOT
+google-cloud-spanner-cassandra:1.0.0:1.0.0
