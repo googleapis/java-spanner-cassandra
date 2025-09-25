@@ -209,7 +209,7 @@ final class ListenerConfig {
         .databaseUri(properties.get(ConfigConstants.DATABASE_URI_PROP_KEY))
         .hostAddress(InetAddress.getByName(host))
         .port(port)
-        .spannerEndpoint(ConfigConstants.DEFAULT_SPANNER_ENDPOINT)
+        .spannerEndpoint("staging-wrenchworks.sandbox.googleapis.com:443")
         .numGrpcChannels(numGrpcChannels)
         .maxCommitDelayMillis(maxCommitDelayMillis)
         .enableBuiltInMetrics(enableBuiltInMetrics)
