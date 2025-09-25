@@ -227,7 +227,7 @@ final class Adapter {
 
   private static final class AdapterStartException extends RuntimeException {
     public AdapterStartException(Throwable cause) {
-      super("Failed to start the adapter.", cause);
+      super("Failed to start the adapter: " + cause.getMessage(), cause);
     }
   }
 }

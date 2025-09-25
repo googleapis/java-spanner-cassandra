@@ -34,6 +34,7 @@ import com.datastax.oss.protocol.internal.ProtocolV5ServerCodecs;
 import com.datastax.oss.protocol.internal.ProtocolV6ServerCodecs;
 import com.datastax.oss.protocol.internal.request.Batch;
 import com.datastax.oss.protocol.internal.request.Execute;
+import com.datastax.oss.protocol.internal.request.Prepare;
 import com.datastax.oss.protocol.internal.request.Query;
 import com.datastax.oss.protocol.internal.response.Error;
 import com.datastax.oss.protocol.internal.response.error.Unprepared;
@@ -195,13 +196,11 @@ final class DriverConnectionHandler implements Runnable {
         adapterClientWrapper.sendGrpcRequest(
             ctx.payload, prepareResult.getAttachments(), prepareResult.getContext(), ctx.streamId);
 
-    if (LOG_SERVER_ERRORS) {
-      logServerErrorIfPresent(response);
-    }
+    logServerErrorIfPresent(response, prepareResult.getAttachments());
     return response;
   }
 
-  private void logServerErrorIfPresent(ByteString response) {
+  private void logServerErrorIfPresent(ByteString response, Map<String, String> attMap) {
     try {
       Frame frame = decodeClientFrame(response.toByteArray());
       if (frame.message instanceof Error && !(frame.message instanceof Unprepared)) {
@@ -210,6 +209,9 @@ final class DriverConnectionHandler implements Runnable {
             "Error message received from the server: code: {}, message: {}",
             error.code,
             error.message);
+        for (Map.Entry<String, String> entry : attMap.entrySet()) {
+          LOG.error("Attachment: Key: {}, Value: {}" + entry.getKey() + " - " + entry.getValue());
+        }
       }
     } catch (RuntimeException e) {
       // Do nothing if we are not able to decode the message, as the driver will throw an error
@@ -353,9 +355,16 @@ final class DriverConnectionHandler implements Runnable {
         return prepareBatchMessage((Batch) decodeFrame(ctx.payload).message, ctx.streamId);
       case ProtocolConstants.Opcode.QUERY:
         return prepareQueryMessage((Query) decodeFrame(ctx.payload).message);
+      case ProtocolConstants.Opcode.PREPARE:
+        return prepareMessage((Prepare) decodeFrame(ctx.payload).message, ctx.streamId);
       default:
         return new PreparePayloadResult(DEFAULT_CONTEXT);
     }
+  }
+
+  private PreparePayloadResult prepareMessage(Prepare message, int streamId) {
+    LOG.debug("Query: {}", message.cqlQuery);
+    return new PreparePayloadResult(DEFAULT_CONTEXT);
   }
 
   private PreparePayloadResult prepareExecuteMessage(Execute message, int streamId) {
