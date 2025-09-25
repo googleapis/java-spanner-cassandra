@@ -1,6 +1,6 @@
 # Spanner Cassandra Java Client
 
-## Current Released Version in Public Preview
+## Current Released Version
 
 <!--- {x-version-update-start:google-cloud-spanner-cassandra:released} -->
 Version `0.7.0`
