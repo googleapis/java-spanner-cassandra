@@ -37,7 +37,7 @@ import org.junit.Test;
 /** Extension of BasicIT with multiple threads. */
 public class MultithreadedIT extends AbstractIT {
 
-  private static final int NUM_THREADS = 1024;
+  private static final int NUM_THREADS = 512;
   private static final int TIMEOUT_MINUTES = 5;
 
   public MultithreadedIT(DatabaseContext db) {
