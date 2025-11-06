@@ -224,7 +224,8 @@ public class Launcher {
             .databaseUri(config.getDatabaseUri())
             .inetAddress(config.getHostAddress())
             .numGrpcChannels(config.getNumGrpcChannels())
-            .metricsRecorder(metricsRecorder);
+            .metricsRecorder(metricsRecorder)
+            .insecure(config.insecure());
     if (config.getMaxCommitDelayMillis() != null) {
       opBuilder.maxCommitDelay(Duration.ofMillis(config.getMaxCommitDelayMillis()));
     }
@@ -245,13 +246,15 @@ public class Launcher {
   private void startAdapter(ListenerConfig config) throws IOException {
     LOG.info(
         "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels, max commit"
-            + " delay of {} and built-in metrics enabled: {}",
+            + " delay of {}, built-in metrics enabled: {}, insecure: {}, spanner endpoint: {}",
         config.getDatabaseUri(),
         config.getHostAddress(),
         config.getPort(),
         config.getNumGrpcChannels(),
         config.getMaxCommitDelayMillis(),
-        config.isEnableBuiltInMetrics());
+        config.isEnableBuiltInMetrics(),
+        config.insecure(),
+        config.getSpannerEndpoint());
 
     final DatabaseName databaseName = DatabaseName.parse(config.getDatabaseUri());
     final BuiltInMetricsRecorder metricsRecorder =

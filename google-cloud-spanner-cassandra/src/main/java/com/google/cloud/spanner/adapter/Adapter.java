@@ -32,6 +32,7 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
+import io.grpc.ManagedChannelBuilder;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -92,6 +93,9 @@ final class Adapter {
       if (credentials == null) {
         credentials = GoogleCredentials.getApplicationDefault();
       }
+      if (options.insecure()) {
+        credentials = null;
+      }
       final CredentialsProvider credentialsProvider = setUpCredentialsProvider(credentials);
 
       InstantiatingGrpcChannelProvider.Builder channelProviderBuilder =
@@ -100,6 +104,11 @@ final class Adapter {
       if (options.getUseVirtualThreads()) {
         executor = tryCreateVirtualThreadPerTaskExecutor("spanner-virtual-thread");
         channelProviderBuilder.setExecutor(executor);
+      }
+
+      if (options.insecure()) {
+        LOG.warn("Using insecure channel. This should not be used in production.");
+        channelProviderBuilder.setChannelConfigurator(ManagedChannelBuilder::usePlaintext);
       }
 
       channelProviderBuilder

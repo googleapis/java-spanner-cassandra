@@ -105,6 +105,28 @@ public class LauncherConfigParserTest {
   }
 
   @Test
+  public void testParse_withValidInsecureConfigFile() throws Exception {
+    String configFile =
+        getClass().getClassLoader().getResource("valid-insecure-config.yaml").getFile();
+    Map<String, String> properties = new HashMap<>();
+    properties.put("configFilePath", configFile);
+
+    LauncherConfig config = LauncherConfigParser.parse(properties);
+
+    assertThat(config.getListeners()).hasSize(2);
+    ListenerConfig listenerConfig1 = config.getListeners().get(0);
+    assertThat(listenerConfig1.getSpannerEndpoint()).isEqualTo("localhost:15000");
+    assertThat(listenerConfig1.insecure()).isTrue();
+
+    ListenerConfig listenerConfig2 = config.getListeners().get(1);
+    assertThat(listenerConfig2.getDatabaseUri())
+        .isEqualTo("projects/my-project/instances/my-instance/databases/my-database-2");
+    assertThat(listenerConfig2.getPort()).isEqualTo(9043);
+    assertThat(listenerConfig2.getSpannerEndpoint()).isEqualTo("localhost:15000");
+    assertThat(listenerConfig2.insecure()).isTrue();
+  }
+
+  @Test
   public void testParse_withSystemProperties() throws Exception {
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
@@ -131,6 +153,41 @@ public class LauncherConfigParserTest {
       assertThat(listenerConfig.isEnableBuiltInMetrics()).isTrue();
       assertThat(config.getHealthCheckConfig()).isNotNull();
       assertThat(config.getHealthCheckConfig().getPort()).isEqualTo(8080);
+    }
+  }
+
+  @Test
+  public void testParse_withInsecureSystemProperties() throws Exception {
+    Map<String, String> properties = new HashMap<>();
+    properties.put("databaseUri", DEFAULT_DATABASE_URI);
+    properties.put("host", "127.0.0.1");
+    properties.put("port", "9042");
+    properties.put("numGrpcChannels", "8");
+    properties.put("maxCommitDelayMillis", "100");
+    properties.put("enableBuiltInMetrics", "true");
+    properties.put("healthCheckPort", "8080");
+    properties.put("spannerEndpoint", "localhost:15000");
+    properties.put("insecure", "true");
+
+    try (MockedStatic<InetAddress> mockedInetAddress = mockStatic(InetAddress.class)) {
+      InetAddress mockAddress = mock(InetAddress.class);
+      when(mockAddress.getHostAddress()).thenReturn("127.0.0.1");
+      mockedInetAddress.when(() -> InetAddress.getByName("127.0.0.1")).thenReturn(mockAddress);
+
+      LauncherConfig config = LauncherConfigParser.parse(properties);
+      assertThat(config.getListeners()).hasSize(1);
+      ListenerConfig listenerConfig = config.getListeners().get(0);
+      assertThat(listenerConfig.getDatabaseUri()).isEqualTo(DEFAULT_DATABASE_URI);
+      assertThat(listenerConfig.getPort()).isEqualTo(9042);
+      assertThat(listenerConfig.getHostAddress().getHostAddress()).isEqualTo("127.0.0.1");
+      assertThat(listenerConfig.getNumGrpcChannels()).isEqualTo(8);
+      assertThat(listenerConfig.getMaxCommitDelayMillis()).isEqualTo(100);
+      assertThat(listenerConfig.isEnableBuiltInMetrics()).isTrue();
+      assertThat(config.getHealthCheckConfig()).isNotNull();
+      assertThat(config.getHealthCheckConfig().getPort()).isEqualTo(8080);
+      assertThat(listenerConfig.getSpannerEndpoint()).isNotNull();
+      assertThat(listenerConfig.getSpannerEndpoint()).isEqualTo("localhost:15000");
+      assertThat(listenerConfig.insecure()).isTrue();
     }
   }
 

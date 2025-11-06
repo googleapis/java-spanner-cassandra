@@ -40,6 +40,7 @@ public class YamlConfigLoaderTest {
       assertThat(userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics()).isTrue();
       assertThat(userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint())
           .isEqualTo("127.0.0.1:8080");
+      assertThat(userConfigs.getGlobalClientConfigs().getInsecure()).isNull();
 
       List<ListenerConfigs> listeners = userConfigs.getListeners();
       assertThat(listeners).isNotNull();
@@ -74,6 +75,27 @@ public class YamlConfigLoaderTest {
       assertThat(listener2.getSpanner().getNumGrpcChannels()).isEqualTo(8);
 
       assertThat(listener2.getSpanner().getMaxCommitDelayMillis()).isNull();
+    }
+  }
+
+  @Test
+  public void testLoad_validInsecureYamlFile_parsesCorrectly() throws IOException {
+    try (InputStream inputStream =
+        getClass().getClassLoader().getResourceAsStream("valid-insecure-config.yaml")) {
+      UserConfigs userConfigs = YamlConfigLoader.load(inputStream);
+
+      assertThat(userConfigs).isNotNull();
+      assertThat(userConfigs.getGlobalClientConfigs()).isNotNull();
+      assertThat(userConfigs.getGlobalClientConfigs().getSpannerEndpoint())
+          .isEqualTo("localhost:15000");
+      assertThat(userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics()).isTrue();
+      assertThat(userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint())
+          .isEqualTo("127.0.0.1:8080");
+      assertThat(userConfigs.getGlobalClientConfigs().getInsecure()).isTrue();
+
+      List<ListenerConfigs> listeners = userConfigs.getListeners();
+      assertThat(listeners).isNotNull();
+      assertThat(listeners).hasSize(2);
     }
   }
 

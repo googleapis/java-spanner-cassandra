@@ -23,6 +23,7 @@ public final class ConfigConstants {
   private ConfigConstants() {}
 
   public static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
+  public static final String SPANNER_ENDPOINT_PROP_KEY = "spannerEndpoint";
   public static final String DATABASE_URI_PROP_KEY = "databaseUri";
   public static final String HOST_PROP_KEY = "host";
   public static final String PORT_PROP_KEY = "port";
@@ -34,4 +35,5 @@ public final class ConfigConstants {
   public static final String ENABLE_BUILTIN_METRICS_PROP_KEY = "enableBuiltInMetrics";
   public static final String HEALTH_CHECK_PORT_PROP_KEY = "healthCheckPort";
   public static final String CONFIG_FILE_PROP_KEY = "configFilePath";
+  public static final String INSECURE_PROP_KEY = "insecure";
 }
