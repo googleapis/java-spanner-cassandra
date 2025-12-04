@@ -286,11 +286,6 @@ final class ListenerConfig {
       return this;
     }
 
-    public Builder insecure(String insecure) {
-      this.insecure = Boolean.parseBoolean(insecure);
-      return this;
-    }
-
     public Builder insecure(boolean insecure) {
       this.insecure = insecure;
       return this;
