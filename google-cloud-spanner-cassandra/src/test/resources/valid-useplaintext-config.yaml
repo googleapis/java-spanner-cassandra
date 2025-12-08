@@ -3,7 +3,7 @@ globalClientConfigs:
   spannerEndpoint: "localhost:15000"
   enableBuiltInMetrics: true
   healthCheckEndpoint: "127.0.0.1:8080"
-  insecure: true
+  usePlainText: true
 
 # List of all listeners
 listeners:

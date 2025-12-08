@@ -40,7 +40,7 @@ public class YamlConfigLoaderTest {
       assertThat(userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics()).isTrue();
       assertThat(userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint())
           .isEqualTo("127.0.0.1:8080");
-      assertThat(userConfigs.getGlobalClientConfigs().getInsecure()).isNull();
+      assertThat(userConfigs.getGlobalClientConfigs().getUsePlainText()).isNull();
 
       List<ListenerConfigs> listeners = userConfigs.getListeners();
       assertThat(listeners).isNotNull();
@@ -79,9 +79,9 @@ public class YamlConfigLoaderTest {
   }
 
   @Test
-  public void testLoad_validInsecureYamlFile_parsesCorrectly() throws IOException {
+  public void testLoad_validUsePlainTextYamlFile_parsesCorrectly() throws IOException {
     try (InputStream inputStream =
-        getClass().getClassLoader().getResourceAsStream("valid-insecure-config.yaml")) {
+        getClass().getClassLoader().getResourceAsStream("valid-useplaintext-config.yaml")) {
       UserConfigs userConfigs = YamlConfigLoader.load(inputStream);
 
       assertThat(userConfigs).isNotNull();
@@ -91,7 +91,7 @@ public class YamlConfigLoaderTest {
       assertThat(userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics()).isTrue();
       assertThat(userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint())
           .isEqualTo("127.0.0.1:8080");
-      assertThat(userConfigs.getGlobalClientConfigs().getInsecure()).isTrue();
+      assertThat(userConfigs.getGlobalClientConfigs().getUsePlainText()).isTrue();
 
       List<ListenerConfigs> listeners = userConfigs.getListeners();
       assertThat(listeners).isNotNull();

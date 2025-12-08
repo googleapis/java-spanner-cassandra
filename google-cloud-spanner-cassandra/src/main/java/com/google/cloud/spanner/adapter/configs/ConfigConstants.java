@@ -35,5 +35,5 @@ public final class ConfigConstants {
   public static final String ENABLE_BUILTIN_METRICS_PROP_KEY = "enableBuiltInMetrics";
   public static final String HEALTH_CHECK_PORT_PROP_KEY = "healthCheckPort";
   public static final String CONFIG_FILE_PROP_KEY = "configFilePath";
-  public static final String INSECURE_PROP_KEY = "insecure";
+  public static final String USE_PLAINTEXT_PROP_KEY = "usePlainText";
 }

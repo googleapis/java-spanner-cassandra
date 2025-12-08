@@ -23,17 +23,17 @@ public class GlobalClientConfigs {
   private final String spannerEndpoint;
   private final Boolean enableBuiltInMetrics;
   private final String healthCheckEndpoint;
-  private final Boolean insecure;
+  private final Boolean usePlainText;
 
   public GlobalClientConfigs(
       String spannerEndpoint,
       Boolean enableBuiltInMetrics,
       String healthCheckEndpoint,
-      Boolean insecure) {
+      Boolean usePlainText) {
     this.spannerEndpoint = spannerEndpoint;
     this.enableBuiltInMetrics = enableBuiltInMetrics;
     this.healthCheckEndpoint = healthCheckEndpoint;
-    this.insecure = insecure;
+    this.usePlainText = usePlainText;
   }
 
   public GlobalClientConfigs(
@@ -45,9 +45,9 @@ public class GlobalClientConfigs {
     String spannerEndpoint = (String) yamlMap.get("spannerEndpoint");
     Boolean enableBuiltInMetrics = (Boolean) yamlMap.get("enableBuiltInMetrics");
     String healthCheckEndpoint = (String) yamlMap.get("healthCheckEndpoint");
-    Boolean insecure = (Boolean) yamlMap.get("insecure");
+    Boolean usePlainText = (Boolean) yamlMap.get("usePlainText");
     return new GlobalClientConfigs(
-        spannerEndpoint, enableBuiltInMetrics, healthCheckEndpoint, insecure);
+        spannerEndpoint, enableBuiltInMetrics, healthCheckEndpoint, usePlainText);
   }
 
   public String getSpannerEndpoint() {
@@ -62,7 +62,7 @@ public class GlobalClientConfigs {
     return healthCheckEndpoint;
   }
 
-  public Boolean getInsecure() {
-    return insecure;
+  public Boolean getUsePlainText() {
+    return usePlainText;
   }
 }

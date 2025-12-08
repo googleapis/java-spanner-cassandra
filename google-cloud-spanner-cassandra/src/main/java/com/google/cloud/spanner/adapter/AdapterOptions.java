@@ -40,7 +40,7 @@ class AdapterOptions {
     private Credentials credentials;
     private BuiltInMetricsRecorder metricsRecorder;
     private boolean useVirtualThreads = false;
-    private boolean insecure = false;
+    private boolean usePlainText = false;
 
     /** The Cloud Spanner endpoint. */
     Builder spannerEndpoint(String spannerEndpoint) {
@@ -107,9 +107,9 @@ class AdapterOptions {
       return this;
     }
 
-    /** (Optional) Whether to enable insecure mode when connecting to Spanner */
-    Builder insecure(boolean insecure) {
-      this.insecure = insecure;
+    /** (Optional) Whether to use a plaintext connection to Spanner. */
+    Builder usePlainText(boolean usePlainText) {
+      this.usePlainText = usePlainText;
       return this;
     }
 
@@ -128,7 +128,7 @@ class AdapterOptions {
   private Credentials credentials;
   private BuiltInMetricsRecorder metricsRecorder;
   private boolean useVirtualThreads;
-  private boolean insecure;
+  private boolean usePlainText;
 
   private AdapterOptions(Builder builder) {
     this.spannerEndpoint = builder.spannerEndpoint;
@@ -141,7 +141,7 @@ class AdapterOptions {
     this.credentials = builder.credentials;
     this.metricsRecorder = builder.metricsRecorder;
     this.useVirtualThreads = builder.useVirtualThreads;
-    this.insecure = builder.insecure;
+    this.usePlainText = builder.usePlainText;
   }
 
   static Builder newBuilder() {
@@ -188,7 +188,7 @@ class AdapterOptions {
     return metricsRecorder;
   }
 
-  boolean insecure() {
-    return insecure;
+  boolean usePlainText() {
+    return usePlainText;
   }
 }

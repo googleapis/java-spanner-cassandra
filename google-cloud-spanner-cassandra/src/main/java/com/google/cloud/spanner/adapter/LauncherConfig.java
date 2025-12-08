@@ -58,7 +58,7 @@ public final class LauncherConfig {
 
     final String globalSpannerEndpoint;
     final boolean globalEnableBuiltInMetrics;
-    final boolean insecure;
+    final boolean usePlainText;
     HealthCheckConfig healthCheckConfig = null;
 
     if (userConfigs.getGlobalClientConfigs() != null) {
@@ -74,13 +74,13 @@ public final class LauncherConfig {
             HealthCheckConfig.fromEndpointString(
                 userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint());
       }
-      insecure =
-          userConfigs.getGlobalClientConfigs().getInsecure() != null
-              && userConfigs.getGlobalClientConfigs().getInsecure();
+      usePlainText =
+          userConfigs.getGlobalClientConfigs().getUsePlainText() != null
+              && userConfigs.getGlobalClientConfigs().getUsePlainText();
     } else {
       globalSpannerEndpoint = ConfigConstants.DEFAULT_SPANNER_ENDPOINT;
       globalEnableBuiltInMetrics = false;
-      insecure = false;
+      usePlainText = false;
     }
 
     List<ListenerConfig> listenerConfigs = new ArrayList<>();
@@ -88,7 +88,7 @@ public final class LauncherConfig {
       validateListenerConfig(listener);
       listenerConfigs.add(
           ListenerConfig.fromListenerConfigs(
-              listener, globalSpannerEndpoint, globalEnableBuiltInMetrics, insecure));
+              listener, globalSpannerEndpoint, globalEnableBuiltInMetrics, usePlainText));
     }
 
     return new LauncherConfig(listenerConfigs, healthCheckConfig);
@@ -129,7 +129,7 @@ final class ListenerConfig {
   private final int numGrpcChannels;
   @Nullable private final Integer maxCommitDelayMillis;
   private final boolean enableBuiltInMetrics;
-  private final boolean insecure;
+  private final boolean usePlainText;
 
   private ListenerConfig(Builder builder) {
     this.databaseUri = builder.databaseUri;
@@ -139,7 +139,7 @@ final class ListenerConfig {
     this.numGrpcChannels = builder.numGrpcChannels;
     this.maxCommitDelayMillis = builder.maxCommitDelayMillis;
     this.enableBuiltInMetrics = builder.enableBuiltInMetrics;
-    this.insecure = builder.insecure;
+    this.usePlainText = builder.usePlainText;
   }
 
   public String getDatabaseUri() {
@@ -171,15 +171,15 @@ final class ListenerConfig {
     return enableBuiltInMetrics;
   }
 
-  public boolean insecure() {
-    return insecure;
+  public boolean usePlainText() {
+    return usePlainText;
   }
 
   static ListenerConfig fromListenerConfigs(
       ListenerConfigs listener,
       String globalSpannerEndpoint,
       boolean globalEnableBuiltInMetrics,
-      boolean insecure)
+      boolean usePlainText)
       throws UnknownHostException {
     String host = listener.getHost() != null ? listener.getHost() : ConfigConstants.DEFAULT_HOST;
     int port = listener.getPort() != null ? listener.getPort() : ConfigConstants.DEFAULT_PORT;
@@ -197,7 +197,7 @@ final class ListenerConfig {
         .numGrpcChannels(numGrpcChannels)
         .maxCommitDelayMillis(maxCommitDelayMillis)
         .enableBuiltInMetrics(globalEnableBuiltInMetrics)
-        .insecure(insecure)
+        .usePlainText(usePlainText)
         .build();
   }
 
@@ -222,8 +222,9 @@ final class ListenerConfig {
     boolean enableBuiltInMetrics =
         Boolean.parseBoolean(
             properties.getOrDefault(ConfigConstants.ENABLE_BUILTIN_METRICS_PROP_KEY, "false"));
-    boolean insecure =
-        Boolean.parseBoolean(properties.getOrDefault(ConfigConstants.INSECURE_PROP_KEY, "false"));
+    boolean usePlainText =
+        Boolean.parseBoolean(
+            properties.getOrDefault(ConfigConstants.USE_PLAINTEXT_PROP_KEY, "false"));
 
     return newBuilder()
         .databaseUri(properties.get(ConfigConstants.DATABASE_URI_PROP_KEY))
@@ -233,7 +234,7 @@ final class ListenerConfig {
         .numGrpcChannels(numGrpcChannels)
         .maxCommitDelayMillis(maxCommitDelayMillis)
         .enableBuiltInMetrics(enableBuiltInMetrics)
-        .insecure(insecure)
+        .usePlainText(usePlainText)
         .build();
   }
 
@@ -249,7 +250,7 @@ final class ListenerConfig {
     private int numGrpcChannels;
     @Nullable private Integer maxCommitDelayMillis;
     private boolean enableBuiltInMetrics;
-    private boolean insecure;
+    private boolean usePlainText;
 
     public Builder databaseUri(String databaseUri) {
       this.databaseUri = databaseUri;
@@ -286,8 +287,8 @@ final class ListenerConfig {
       return this;
     }
 
-    public Builder insecure(boolean insecure) {
-      this.insecure = insecure;
+    public Builder usePlainText(boolean usePlainText) {
+      this.usePlainText = usePlainText;
       return this;
     }
 

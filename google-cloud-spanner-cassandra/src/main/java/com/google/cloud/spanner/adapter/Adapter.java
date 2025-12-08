@@ -93,7 +93,7 @@ final class Adapter {
       if (credentials == null) {
         credentials = GoogleCredentials.getApplicationDefault();
       }
-      if (options.insecure()) {
+      if (options.usePlainText()) {
         credentials = null;
       }
       final CredentialsProvider credentialsProvider = setUpCredentialsProvider(credentials);
@@ -106,8 +106,8 @@ final class Adapter {
         channelProviderBuilder.setExecutor(executor);
       }
 
-      if (options.insecure()) {
-        LOG.warn("Using insecure channel. This should not be used in production.");
+      if (options.usePlainText()) {
+        LOG.warn("Using plain text channel. This should not be used in production.");
         channelProviderBuilder.setChannelConfigurator(ManagedChannelBuilder::usePlaintext);
       }
 

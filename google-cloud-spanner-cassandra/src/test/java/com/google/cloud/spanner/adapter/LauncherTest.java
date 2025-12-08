@@ -112,7 +112,7 @@ public class LauncherTest {
     assertThat(options1.getTcpPort()).isEqualTo(9042);
     assertThat(options1.getInetAddress()).isEqualTo(InetAddress.getByName("127.0.0.1"));
     assertThat(options1.getSpannerEndpoint()).isEqualTo("spanner.googleapis.com:443");
-    assertThat(options1.insecure()).isFalse();
+    assertThat(options1.usePlainText()).isFalse();
 
     AdapterOptions options2 = adapterOptionsCaptor.getAllValues().get(1);
     assertThat(options2.getDatabaseUri())
@@ -120,7 +120,7 @@ public class LauncherTest {
     assertThat(options2.getTcpPort()).isEqualTo(9043);
     assertThat(options2.getInetAddress()).isEqualTo(InetAddress.getByName("0.0.0.0"));
     assertThat(options2.getSpannerEndpoint()).isEqualTo("spanner.googleapis.com:443");
-    assertThat(options2.insecure()).isFalse();
+    assertThat(options2.usePlainText()).isFalse();
   }
 
   @Test
@@ -150,11 +150,11 @@ public class LauncherTest {
     assertThat(options.getNumGrpcChannels()).isEqualTo(8);
     assertThat(options.getMaxCommitDelay().get().toMillis()).isEqualTo(100);
     assertThat(options.getSpannerEndpoint()).isEqualTo("spanner.googleapis.com:443");
-    assertThat(options.insecure()).isFalse();
+    assertThat(options.usePlainText()).isFalse();
   }
 
   @Test
-  public void testRun_withInsecureMode_startsAdapterWithOptions() throws Exception {
+  public void testRun_withUsePlainTextMode_startsAdapterWithOptions() throws Exception {
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
     properties.put("host", "127.0.0.1");
@@ -164,7 +164,7 @@ public class LauncherTest {
     properties.put("enableBuiltInMetrics", "true");
     properties.put("healthCheckPort", "8080");
     properties.put("spannerEndpoint", "localhost:15000");
-    properties.put("insecure", "true");
+    properties.put("usePlainText", "true");
     LauncherConfig config = LauncherConfig.fromProperties(properties);
 
     launcher.run(config);
@@ -182,7 +182,7 @@ public class LauncherTest {
     assertThat(options.getNumGrpcChannels()).isEqualTo(8);
     assertThat(options.getMaxCommitDelay().get().toMillis()).isEqualTo(100);
     assertThat(options.getSpannerEndpoint()).isEqualTo("localhost:15000");
-    assertThat(options.insecure()).isTrue();
+    assertThat(options.usePlainText()).isTrue();
   }
 
   @Test

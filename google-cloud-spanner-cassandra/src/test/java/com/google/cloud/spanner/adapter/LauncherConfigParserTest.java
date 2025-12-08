@@ -105,9 +105,9 @@ public class LauncherConfigParserTest {
   }
 
   @Test
-  public void testParse_withValidInsecureConfigFile() throws Exception {
+  public void testParse_withValidUsePlainTextConfigFile() throws Exception {
     String configFile =
-        getClass().getClassLoader().getResource("valid-insecure-config.yaml").getFile();
+        getClass().getClassLoader().getResource("valid-useplaintext-config.yaml").getFile();
     Map<String, String> properties = new HashMap<>();
     properties.put("configFilePath", configFile);
 
@@ -116,14 +116,14 @@ public class LauncherConfigParserTest {
     assertThat(config.getListeners()).hasSize(2);
     ListenerConfig listenerConfig1 = config.getListeners().get(0);
     assertThat(listenerConfig1.getSpannerEndpoint()).isEqualTo("localhost:15000");
-    assertThat(listenerConfig1.insecure()).isTrue();
+    assertThat(listenerConfig1.usePlainText()).isTrue();
 
     ListenerConfig listenerConfig2 = config.getListeners().get(1);
     assertThat(listenerConfig2.getDatabaseUri())
         .isEqualTo("projects/my-project/instances/my-instance/databases/my-database-2");
     assertThat(listenerConfig2.getPort()).isEqualTo(9043);
     assertThat(listenerConfig2.getSpannerEndpoint()).isEqualTo("localhost:15000");
-    assertThat(listenerConfig2.insecure()).isTrue();
+    assertThat(listenerConfig2.usePlainText()).isTrue();
   }
 
   @Test
@@ -157,7 +157,7 @@ public class LauncherConfigParserTest {
   }
 
   @Test
-  public void testParse_withInsecureSystemProperties() throws Exception {
+  public void testParse_withUsePlainTextSystemProperties() throws Exception {
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
     properties.put("host", "127.0.0.1");
@@ -167,7 +167,7 @@ public class LauncherConfigParserTest {
     properties.put("enableBuiltInMetrics", "true");
     properties.put("healthCheckPort", "8080");
     properties.put("spannerEndpoint", "localhost:15000");
-    properties.put("insecure", "true");
+    properties.put("usePlainText", "true");
 
     try (MockedStatic<InetAddress> mockedInetAddress = mockStatic(InetAddress.class)) {
       InetAddress mockAddress = mock(InetAddress.class);
@@ -187,7 +187,7 @@ public class LauncherConfigParserTest {
       assertThat(config.getHealthCheckConfig().getPort()).isEqualTo(8080);
       assertThat(listenerConfig.getSpannerEndpoint()).isNotNull();
       assertThat(listenerConfig.getSpannerEndpoint()).isEqualTo("localhost:15000");
-      assertThat(listenerConfig.insecure()).isTrue();
+      assertThat(listenerConfig.usePlainText()).isTrue();
     }
   }
 

@@ -65,7 +65,7 @@ public final class SpannerCqlSessionBuilder
   private TransportChannelProvider channelProvider = null;
   private Credentials credentials;
   private boolean useVirtualThreads;
-  private boolean insecure;
+  private boolean usePlainText;
 
   /**
    * Wraps the default CQL session with a SpannerCqlSession instance.
@@ -147,11 +147,11 @@ public final class SpannerCqlSessionBuilder
   }
 
   /**
-   * (Optional, default `false`) Enables/disables insecure (plaintext) connections to the Spanner
-   * endpoint. This should only be used for testing against a local fake Spanner instance.
+   * (Optional, default `false`) Enables/disables plaintext connections to the Spanner endpoint.
+   * This should only be used for testing against a local fake Spanner instance.
    */
-  public SpannerCqlSessionBuilder setInsecure(boolean insecure) {
-    this.insecure = insecure;
+  public SpannerCqlSessionBuilder setUsePlainText(boolean usePlainText) {
+    this.usePlainText = usePlainText;
     return this;
   }
 
@@ -280,7 +280,7 @@ public final class SpannerCqlSessionBuilder
             .maxCommitDelay(maxCommitDelay.orElse(null))
             .metricsRecorder(metricsRecorder)
             .useVirtualThreads(useVirtualThreads)
-            .insecure(insecure)
+            .usePlainText(usePlainText)
             .build();
     adapter = new Adapter(adapterOptions);
     adapter.start();
