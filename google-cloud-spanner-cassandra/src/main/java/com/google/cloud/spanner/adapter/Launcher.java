@@ -246,15 +246,13 @@ public class Launcher {
   private void startAdapter(ListenerConfig config) throws IOException {
     LOG.info(
         "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels, max commit"
-            + " delay of {}, built-in metrics enabled: {}, usePlainText: {}, spanner endpoint: {}",
+            + " delay of {} and built-in metrics enabled: {}",
         config.getDatabaseUri(),
         config.getHostAddress(),
         config.getPort(),
         config.getNumGrpcChannels(),
         config.getMaxCommitDelayMillis(),
-        config.isEnableBuiltInMetrics(),
-        config.usePlainText(),
-        config.getSpannerEndpoint());
+        config.isEnableBuiltInMetrics());
 
     final DatabaseName databaseName = DatabaseName.parse(config.getDatabaseUri());
     final BuiltInMetricsRecorder metricsRecorder =
