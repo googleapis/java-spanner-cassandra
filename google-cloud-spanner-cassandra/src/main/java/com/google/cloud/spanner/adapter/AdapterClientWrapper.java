@@ -86,6 +86,10 @@ final class AdapterClientWrapper {
       for (AdaptMessageResponse adaptMessageResponse : serverStream) {
         adaptMessageResponse.getStateUpdatesMap().forEach(attachmentsCache::put);
         collectedPayloads.add(adaptMessageResponse.getPayload());
+        if (adaptMessageResponse.getLast()) {
+          // This is the last message in the stream. Stop processing immediately.
+          break;
+        }
       }
     } catch (RuntimeException e) {
       LOG.error("Error executing AdaptMessage request: ", e);
