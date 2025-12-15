@@ -74,11 +74,7 @@ public final class AdapterClientWrapperTest {
     Map<String, String> stateUpdates = new HashMap<>();
     stateUpdates.put("k1", "v1");
     stateUpdates.put("k2", "v2");
-    AdaptMessageResponse mockResponse =
-        AdaptMessageResponse.newBuilder()
-            .setPayload(ByteString.copyFromUtf8("test response"))
-            .putAllStateUpdates(stateUpdates)
-            .build();
+    AdaptMessageResponse mockResponse = createAdaptMessageResponse("test response", stateUpdates);
     Iterator<AdaptMessageResponse> mockResponseIterator =
         Collections.singletonList(mockResponse).iterator();
     AdaptMessageRequest expectedRequest =
@@ -106,21 +102,13 @@ public final class AdapterClientWrapperTest {
     stateUpdates1.put("k1", "v1");
     stateUpdates1.put("k2", "v2");
     AdaptMessageResponse mockResponse1 =
-        AdaptMessageResponse.newBuilder()
-            .setPayload(ByteString.copyFromUtf8(" test response 1"))
-            .putAllStateUpdates(stateUpdates1)
-            .build();
+        createAdaptMessageResponse(" test response 1", stateUpdates1);
     Map<String, String> stateUpdates2 = new HashMap<>();
     stateUpdates2.put("k3", "v3");
     AdaptMessageResponse mockResponse2 =
-        AdaptMessageResponse.newBuilder()
-            .setPayload(ByteString.copyFromUtf8(" test response 2"))
-            .putAllStateUpdates(stateUpdates2)
-            .build();
+        createAdaptMessageResponse(" test response 2", stateUpdates2);
     AdaptMessageResponse mockResponse3 =
-        AdaptMessageResponse.newBuilder()
-            .setPayload(ByteString.copyFromUtf8("test header"))
-            .build();
+        createAdaptMessageResponse("test header", Collections.emptyMap());
     Iterator<AdaptMessageResponse> mockResponseIterator =
         Arrays.asList(mockResponse1, mockResponse2, mockResponse3).iterator();
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
@@ -150,22 +138,13 @@ public final class AdapterClientWrapperTest {
     stateUpdates1.put("k1", "v1");
     stateUpdates1.put("k2", "v2");
     AdaptMessageResponse mockResponse1 =
-        AdaptMessageResponse.newBuilder()
-            .setPayload(ByteString.copyFromUtf8(" test response 1"))
-            .putAllStateUpdates(stateUpdates1)
-            .build();
+        createAdaptMessageResponse(" test response 1", stateUpdates1);
     Map<String, String> stateUpdates2 = new HashMap<>();
     stateUpdates2.put("k3", "v3");
     AdaptMessageResponse mockResponse2 =
-        AdaptMessageResponse.newBuilder()
-            .setPayload(ByteString.copyFromUtf8(" test response 2"))
-            .putAllStateUpdates(stateUpdates2)
-            .build();
+        createAdaptMessageResponse(" test response 2", stateUpdates2);
     AdaptMessageResponse mockResponse3 =
-        AdaptMessageResponse.newBuilder()
-            .setPayload(ByteString.copyFromUtf8("test header (last)"))
-            .setLast(true)
-            .build();
+        createAdaptMessageResponse("test header (last)", Collections.emptyMap(), true);
     Iterator<AdaptMessageResponse> mockResponseIterator =
         Arrays.asList(mockResponse1, mockResponse2, mockResponse3).iterator();
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
@@ -201,8 +180,7 @@ public final class AdapterClientWrapperTest {
     when(mockServerStream.iterator()).thenReturn(mockResponseIterator);
     when(mockSession.getName()).thenReturn("test-session");
 
-    ByteString response =
-        adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context, streamId);
+    adapterClientWrapper.sendGrpcRequest(payload, new HashMap<>(), context, streamId);
 
     verify(mockCallable).call(expectedRequest, context);
   }
@@ -218,5 +196,19 @@ public final class AdapterClientWrapperTest {
         () ->
             adapterClientWrapper.sendGrpcRequest(
                 payload, new HashMap<>(), GrpcCallContext.createDefault(), streamId));
+  }
+
+  private static AdaptMessageResponse createAdaptMessageResponse(
+      String text, Map<String, String> stateUpdates, boolean isLast) {
+    return AdaptMessageResponse.newBuilder()
+        .setPayload(ByteString.copyFromUtf8(text))
+        .putAllStateUpdates(stateUpdates)
+        .setLast(isLast)
+        .build();
+  }
+
+  private static AdaptMessageResponse createAdaptMessageResponse(
+      String text, Map<String, String> stateUpdates) {
+    return createAdaptMessageResponse(text, stateUpdates, false);
   }
 }
