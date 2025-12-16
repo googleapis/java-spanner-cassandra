@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/googleapis/java-spanner-cassandra/compare/v1.0.0...v1.1.0) (2025-12-16)
+
+
+### Features
+
+* Expose options to override spanner endpoint and talking to spanner with plaintext connection ([#266](https://github.com/googleapis/java-spanner-cassandra/issues/266)) ([e5a5e3d](https://github.com/googleapis/java-spanner-cassandra/commit/e5a5e3dac2e319dcf13f5a439ec9fa7cd97f3be3))
+* Skip gRPC trailers when `last` field is set. ([#268](https://github.com/googleapis/java-spanner-cassandra/issues/268)) ([6f7b56a](https://github.com/googleapis/java-spanner-cassandra/commit/6f7b56a95f44a032f60bc7e07af5cf50ec8adbac))
+
 ## [1.0.0](https://github.com/googleapis/java-spanner-cassandra/compare/v0.7.0...v1.0.0) (2025-09-25)
 
 
