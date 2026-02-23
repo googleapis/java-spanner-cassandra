@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/googleapis/java-spanner-cassandra/compare/v1.1.0...v1.1.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* Upgrade testcontainers to 1.21.4 ([#300](https://github.com/googleapis/java-spanner-cassandra/issues/300)) ([ecc2194](https://github.com/googleapis/java-spanner-cassandra/commit/ecc219440ccd99ad91a9c66bb033896d6a2e4ab3))
+
 ## [1.1.0](https://github.com/googleapis/java-spanner-cassandra/compare/v1.0.0...v1.1.0) (2025-12-16)
 
 
