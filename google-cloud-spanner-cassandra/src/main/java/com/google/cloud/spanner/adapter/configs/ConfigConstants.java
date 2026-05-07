@@ -39,4 +39,6 @@ public final class ConfigConstants {
   public static final String EXPERIMENTAL_HOST_ENDPOINT_PROP_KEY = "experimentalHostEndpoint";
   public static final String CLIENT_CERT_PATH_PROP_KEY = "clientCertPath";
   public static final String CLIENT_KEY_PATH_PROP_KEY = "clientKeyPath";
+  public static final String PROXY_TLS_CERT_PATH_PROP_KEY = "proxyTLSCertPath";
+  public static final String PROXY_TLS_KEY_PATH_PROP_KEY = "proxyTLSKeyPath";
 }

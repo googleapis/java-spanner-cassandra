@@ -230,7 +230,8 @@ public class Launcher {
             .metricsRecorder(metricsRecorder)
             .usePlainText(config.usePlainText())
             .setExperimentalHostEndpoint(config.getExperimentalHostEndpoint())
-            .useClientCert(config.getClientCertPath(), config.getClientKeyPath());
+            .useClientCert(config.getClientCertPath(), config.getClientKeyPath())
+            .useProxyTLS(config.getProxyTLSCertPath(), config.getProxyTLSKeyPath());
     if (config.getMaxCommitDelayMillis() != null) {
       opBuilder.maxCommitDelay(Duration.ofMillis(config.getMaxCommitDelayMillis()));
     }

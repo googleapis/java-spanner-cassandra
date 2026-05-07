@@ -45,6 +45,8 @@ class AdapterOptions {
     private String experimentalHostEndpoint = null;
     private String clientCertPath = null;
     private String clientKeyPath = null;
+    private String proxyTLSCertPath = null;
+    private String proxyTLSKeyPath = null;
 
     /** The Cloud Spanner endpoint. */
     Builder spannerEndpoint(String spannerEndpoint) {
@@ -132,6 +134,13 @@ class AdapterOptions {
       return this;
     }
 
+    /** (Optional) Use TLS connection for the proxy listener. */
+    Builder useProxyTLS(String proxyTLSCertPath, String proxyTLSKeyPath) {
+      this.proxyTLSCertPath = proxyTLSCertPath;
+      this.proxyTLSKeyPath = proxyTLSKeyPath;
+      return this;
+    }
+
     private void validateHostConflict(
         String spannerEndpointToCheck, String experimentalHostEndpointToCheck) {
       if (!Strings.isNullOrEmpty(spannerEndpointToCheck)
@@ -161,6 +170,8 @@ class AdapterOptions {
   private String experimentalHostEndpoint;
   private String clientCertPath;
   private String clientKeyPath;
+  private String proxyTLSCertPath;
+  private String proxyTLSKeyPath;
 
   private AdapterOptions(Builder builder) {
     this.spannerEndpoint = builder.spannerEndpoint;
@@ -177,6 +188,8 @@ class AdapterOptions {
     this.experimentalHostEndpoint = builder.experimentalHostEndpoint;
     this.clientCertPath = builder.clientCertPath;
     this.clientKeyPath = builder.clientKeyPath;
+    this.proxyTLSCertPath = builder.proxyTLSCertPath;
+    this.proxyTLSKeyPath = builder.proxyTLSKeyPath;
   }
 
   static Builder newBuilder() {
@@ -241,5 +254,17 @@ class AdapterOptions {
 
   String getClientKeyPath() {
     return clientKeyPath;
+  }
+
+  boolean useProxyTLS() {
+    return !Strings.isNullOrEmpty(proxyTLSCertPath) && !Strings.isNullOrEmpty(proxyTLSKeyPath);
+  }
+
+  String getProxyTLSCertPath() {
+    return proxyTLSCertPath;
+  }
+
+  String getProxyTLSKeyPath() {
+    return proxyTLSKeyPath;
   }
 }

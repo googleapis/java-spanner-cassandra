@@ -16,7 +16,6 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter.configs;
 
-import com.google.common.base.Strings;
 import java.util.Map;
 
 /** Represents the global client configurations loaded from a YAML file. */
@@ -28,27 +27,28 @@ public class GlobalClientConfigs {
   private final String experimentalHostEndpoint;
   private final String clientCertPath;
   private final String clientKeyPath;
+  private final String proxyTLSCertPath;
+  private final String proxyTLSKeyPath;
 
-  public GlobalClientConfigs(
-      String spannerEndpoint,
-      Boolean enableBuiltInMetrics,
-      String healthCheckEndpoint,
-      Boolean usePlainText,
-      String experimentalHostEndpoint,
-      String clientCertPath,
-      String clientKeyPath) {
-    this.spannerEndpoint = spannerEndpoint;
-    this.enableBuiltInMetrics = enableBuiltInMetrics;
-    this.healthCheckEndpoint = healthCheckEndpoint;
-    this.usePlainText = usePlainText;
-    this.experimentalHostEndpoint = experimentalHostEndpoint;
-    this.clientCertPath = clientCertPath;
-    this.clientKeyPath = clientKeyPath;
+  private GlobalClientConfigs(Builder builder) {
+    this.spannerEndpoint = builder.spannerEndpoint;
+    this.enableBuiltInMetrics = builder.enableBuiltInMetrics;
+    this.healthCheckEndpoint = builder.healthCheckEndpoint;
+    this.usePlainText = builder.usePlainText;
+    this.experimentalHostEndpoint = builder.experimentalHostEndpoint;
+    this.clientCertPath = builder.clientCertPath;
+    this.clientKeyPath = builder.clientKeyPath;
+    this.proxyTLSCertPath = builder.proxyTLSCertPath;
+    this.proxyTLSKeyPath = builder.proxyTLSKeyPath;
   }
 
   public GlobalClientConfigs(
       String spannerEndpoint, Boolean enableBuiltInMetrics, String healthCheckEndpoint) {
-    this(spannerEndpoint, enableBuiltInMetrics, healthCheckEndpoint, null, null, null, null);
+    this(
+        new Builder()
+            .spannerEndpoint(spannerEndpoint)
+            .enableBuiltInMetrics(enableBuiltInMetrics)
+            .healthCheckEndpoint(healthCheckEndpoint));
   }
 
   public GlobalClientConfigs(
@@ -57,23 +57,72 @@ public class GlobalClientConfigs {
       String healthCheckEndpoint,
       Boolean usePlainText) {
     this(
-        spannerEndpoint, enableBuiltInMetrics, healthCheckEndpoint, usePlainText, null, null, null);
+        new Builder()
+            .spannerEndpoint(spannerEndpoint)
+            .enableBuiltInMetrics(enableBuiltInMetrics)
+            .healthCheckEndpoint(healthCheckEndpoint)
+            .usePlainText(usePlainText));
   }
 
-  public GlobalClientConfigs(
-      String spannerEndpoint,
-      Boolean enableBuiltInMetrics,
-      String healthCheckEndpoint,
-      Boolean usePlainText,
-      String experimentalHostEndpoint) {
-    this(
-        spannerEndpoint,
-        enableBuiltInMetrics,
-        healthCheckEndpoint,
-        usePlainText,
-        experimentalHostEndpoint,
-        null,
-        null);
+  public static class Builder {
+    private String spannerEndpoint;
+    private Boolean enableBuiltInMetrics;
+    private String healthCheckEndpoint;
+    private Boolean usePlainText;
+    private String experimentalHostEndpoint;
+    private String clientCertPath;
+    private String clientKeyPath;
+    private String proxyTLSCertPath;
+    private String proxyTLSKeyPath;
+
+    public Builder spannerEndpoint(String spannerEndpoint) {
+      this.spannerEndpoint = spannerEndpoint;
+      return this;
+    }
+
+    public Builder enableBuiltInMetrics(Boolean enableBuiltInMetrics) {
+      this.enableBuiltInMetrics = enableBuiltInMetrics;
+      return this;
+    }
+
+    public Builder healthCheckEndpoint(String healthCheckEndpoint) {
+      this.healthCheckEndpoint = healthCheckEndpoint;
+      return this;
+    }
+
+    public Builder usePlainText(Boolean usePlainText) {
+      this.usePlainText = usePlainText;
+      return this;
+    }
+
+    public Builder experimentalHostEndpoint(String experimentalHostEndpoint) {
+      this.experimentalHostEndpoint = experimentalHostEndpoint;
+      return this;
+    }
+
+    public Builder clientCertPath(String clientCertPath) {
+      this.clientCertPath = clientCertPath;
+      return this;
+    }
+
+    public Builder clientKeyPath(String clientKeyPath) {
+      this.clientKeyPath = clientKeyPath;
+      return this;
+    }
+
+    public Builder proxyTLSCertPath(String proxyTLSCertPath) {
+      this.proxyTLSCertPath = proxyTLSCertPath;
+      return this;
+    }
+
+    public Builder proxyTLSKeyPath(String proxyTLSKeyPath) {
+      this.proxyTLSKeyPath = proxyTLSKeyPath;
+      return this;
+    }
+
+    public GlobalClientConfigs build() {
+      return new GlobalClientConfigs(this);
+    }
   }
 
   public static GlobalClientConfigs fromMap(Map<String, Object> yamlMap) {
@@ -84,22 +133,20 @@ public class GlobalClientConfigs {
     String experimentalHostEndpoint = (String) yamlMap.get("experimentalHostEndpoint");
     String clientCertPath = (String) yamlMap.get("clientCertPath");
     String clientKeyPath = (String) yamlMap.get("clientKeyPath");
-    if (Strings.isNullOrEmpty(clientCertPath) || Strings.isNullOrEmpty(clientKeyPath)) {
-      return new GlobalClientConfigs(
-          spannerEndpoint,
-          enableBuiltInMetrics,
-          healthCheckEndpoint,
-          usePlainText,
-          experimentalHostEndpoint);
-    }
-    return new GlobalClientConfigs(
-        spannerEndpoint,
-        enableBuiltInMetrics,
-        healthCheckEndpoint,
-        usePlainText,
-        experimentalHostEndpoint,
-        clientCertPath,
-        clientKeyPath);
+    String proxyTLSCertPath = (String) yamlMap.get("proxyTLSCertPath");
+    String proxyTLSKeyPath = (String) yamlMap.get("proxyTLSKeyPath");
+
+    return new GlobalClientConfigs.Builder()
+        .spannerEndpoint(spannerEndpoint)
+        .enableBuiltInMetrics(enableBuiltInMetrics)
+        .healthCheckEndpoint(healthCheckEndpoint)
+        .usePlainText(usePlainText)
+        .experimentalHostEndpoint(experimentalHostEndpoint)
+        .clientCertPath(clientCertPath)
+        .clientKeyPath(clientKeyPath)
+        .proxyTLSCertPath(proxyTLSCertPath)
+        .proxyTLSKeyPath(proxyTLSKeyPath)
+        .build();
   }
 
   public String getSpannerEndpoint() {
@@ -128,5 +175,13 @@ public class GlobalClientConfigs {
 
   public String getClientKeyPath() {
     return clientKeyPath;
+  }
+
+  public String getProxyTLSCertPath() {
+    return proxyTLSCertPath;
+  }
+
+  public String getProxyTLSKeyPath() {
+    return proxyTLSKeyPath;
   }
 }
