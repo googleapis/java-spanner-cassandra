@@ -327,7 +327,7 @@ public final class DriverConnectionHandlerTest {
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
-    
+
     AttachmentsCache attachmentsCache = new AttachmentsCache(1);
     attachmentsCache.put("keyspace", "test_keyspace");
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(attachmentsCache);
@@ -339,7 +339,8 @@ public final class DriverConnectionHandlerTest {
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
     verify(mockAdapterClient)
-        .sendGrpcRequest(any(), attachmentsCaptor.capture(), contextCaptor.capture(), any(int.class));
+        .sendGrpcRequest(
+            any(), attachmentsCaptor.capture(), contextCaptor.capture(), any(int.class));
     assertThat(attachmentsCaptor.getValue()).containsExactly("keyspace", "test_keyspace");
   }
 
@@ -350,7 +351,7 @@ public final class DriverConnectionHandlerTest {
     when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(validPayload));
     when(mockAdapterClient.sendGrpcRequest(any(byte[].class), any(), any(), any(int.class)))
         .thenReturn(grpcResponse);
-    
+
     AttachmentsCache attachmentsCache = new AttachmentsCache(1);
     attachmentsCache.put("keyspace", "test_keyspace");
     when(mockAdapterClient.getAttachmentsCache()).thenReturn(attachmentsCache);
@@ -362,7 +363,8 @@ public final class DriverConnectionHandlerTest {
     assertThat(outputStream.toString(StandardCharsets.UTF_8.name())).isEqualTo("gRPC response");
     verify(mockSocket).close();
     verify(mockAdapterClient)
-        .sendGrpcRequest(any(), attachmentsCaptor.capture(), contextCaptor.capture(), any(int.class));
+        .sendGrpcRequest(
+            any(), attachmentsCaptor.capture(), contextCaptor.capture(), any(int.class));
     assertThat(attachmentsCaptor.getValue()).containsExactly("keyspace", "test_keyspace");
   }
 

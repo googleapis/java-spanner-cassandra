@@ -359,7 +359,6 @@ final class DriverConnectionHandler implements Runnable {
         return preparePrepareMessage();
       default:
         return new PreparePayloadResult(DEFAULT_CONTEXT);
-
     }
   }
 
@@ -410,18 +409,19 @@ final class DriverConnectionHandler implements Runnable {
         attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
       }
     }
-    Optional<String> keyspace = adapterClientWrapper.getAttachmentsCache().get(KEYSPACE_ATTACHMENT_KEY);
+    Optional<String> keyspace =
+        adapterClientWrapper.getAttachmentsCache().get(KEYSPACE_ATTACHMENT_KEY);
     keyspace.ifPresent(v -> attachments.put(KEYSPACE_ATTACHMENT_KEY, v));
     return new PreparePayloadResult(context, attachments);
   }
 
   private PreparePayloadResult preparePrepareMessage() {
     Map<String, String> attachments = new HashMap<>();
-    Optional<String> keyspace = adapterClientWrapper.getAttachmentsCache().get(KEYSPACE_ATTACHMENT_KEY);
+    Optional<String> keyspace =
+        adapterClientWrapper.getAttachmentsCache().get(KEYSPACE_ATTACHMENT_KEY);
     keyspace.ifPresent(v -> attachments.put(KEYSPACE_ATTACHMENT_KEY, v));
     return new PreparePayloadResult(DEFAULT_CONTEXT, attachments);
   }
-
 
   private Optional<ByteString> prepareAttachmentForQueryId(
       int streamId, Map<String, String> attachments, byte[] queryId) {
