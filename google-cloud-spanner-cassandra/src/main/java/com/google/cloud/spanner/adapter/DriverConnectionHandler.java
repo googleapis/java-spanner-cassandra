@@ -71,6 +71,8 @@ final class DriverConnectionHandler implements Runnable {
   private static final char WRITE_ACTION_QUERY_ID_PREFIX = 'W';
   private static final String ROUTE_TO_LEADER_HEADER_KEY = "x-goog-spanner-route-to-leader";
   private static final String MAX_COMMIT_DELAY_ATTACHMENT_KEY = "max_commit_delay";
+  private static final String KEYSPACE_ATTACHMENT_KEY = "keyspace";
+
   private static final ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private static final FrameCodec<ByteBuf> serverFrameCodec = customServerCodec(byteBufAllocator);
   private static final FrameCodec<ByteBuf> clientFrameCodec =
@@ -353,8 +355,11 @@ final class DriverConnectionHandler implements Runnable {
         return prepareBatchMessage((Batch) decodeFrame(ctx.payload).message, ctx.streamId);
       case ProtocolConstants.Opcode.QUERY:
         return prepareQueryMessage((Query) decodeFrame(ctx.payload).message);
+      case ProtocolConstants.Opcode.PREPARE:
+        return preparePrepareMessage();
       default:
         return new PreparePayloadResult(DEFAULT_CONTEXT);
+
     }
   }
 
@@ -396,18 +401,27 @@ final class DriverConnectionHandler implements Runnable {
 
   private PreparePayloadResult prepareQueryMessage(Query message) {
     ApiCallContext context;
-    Map<String, String> attachments = Collections.emptyMap();
+    Map<String, String> attachments = new HashMap<>();
     if (startsWith(message.query, "SELECT")) {
       context = DEFAULT_CONTEXT;
     } else {
       context = DEFAULT_CONTEXT_WITH_LAR;
       if (maxCommitDelayMillis.isPresent()) {
-        attachments = new HashMap<>();
         attachments.put(MAX_COMMIT_DELAY_ATTACHMENT_KEY, maxCommitDelayMillis.get());
       }
     }
+    Optional<String> keyspace = adapterClientWrapper.getAttachmentsCache().get(KEYSPACE_ATTACHMENT_KEY);
+    keyspace.ifPresent(v -> attachments.put(KEYSPACE_ATTACHMENT_KEY, v));
     return new PreparePayloadResult(context, attachments);
   }
+
+  private PreparePayloadResult preparePrepareMessage() {
+    Map<String, String> attachments = new HashMap<>();
+    Optional<String> keyspace = adapterClientWrapper.getAttachmentsCache().get(KEYSPACE_ATTACHMENT_KEY);
+    keyspace.ifPresent(v -> attachments.put(KEYSPACE_ATTACHMENT_KEY, v));
+    return new PreparePayloadResult(DEFAULT_CONTEXT, attachments);
+  }
+
 
   private Optional<ByteString> prepareAttachmentForQueryId(
       int streamId, Map<String, String> attachments, byte[] queryId) {
