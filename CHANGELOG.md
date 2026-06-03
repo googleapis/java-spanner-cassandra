@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/googleapis/java-spanner-cassandra/compare/v1.1.0...v1.2.0) (2026-06-03)
+
+
+### Features
+
+* Expose options for connecting to experimental host via tls/mTLS ([#307](https://github.com/googleapis/java-spanner-cassandra/issues/307)) ([f93a5eb](https://github.com/googleapis/java-spanner-cassandra/commit/f93a5eba151c687f0e8bac974bbdca9577659e41))
+* Support USE keyspace attachments ([#353](https://github.com/googleapis/java-spanner-cassandra/issues/353)) ([4ee06d4](https://github.com/googleapis/java-spanner-cassandra/commit/4ee06d40a000eaffeffa0a464a6fb7582d8d3b63))
+
+
+### Bug Fixes
+
+* Update renovate config check to use npx ([#338](https://github.com/googleapis/java-spanner-cassandra/issues/338)) ([52c6b98](https://github.com/googleapis/java-spanner-cassandra/commit/52c6b98a8d090f5710f0435322a2bdc647b88c60))
+* Upgrade testcontainers to 1.21.4 ([#300](https://github.com/googleapis/java-spanner-cassandra/issues/300)) ([ecc2194](https://github.com/googleapis/java-spanner-cassandra/commit/ecc219440ccd99ad91a9c66bb033896d6a2e4ab3))
+
 ## [1.1.0](https://github.com/googleapis/java-spanner-cassandra/compare/v1.0.0...v1.1.0) (2025-12-16)
 
 
