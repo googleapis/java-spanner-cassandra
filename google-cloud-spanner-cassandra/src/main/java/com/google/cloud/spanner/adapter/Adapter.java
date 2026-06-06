@@ -94,6 +94,11 @@ final class Adapter {
     }
 
     try {
+      if (Strings.isNullOrEmpty(options.getProxyTLSCertPath())
+          != Strings.isNullOrEmpty(options.getProxyTLSKeyPath())) {
+        throw new IllegalArgumentException(
+            "Both proxyTLSCertPath and proxyTLSKeyPath must be specified for TLS support");
+      }
       Credentials credentials = options.getCredentials();
       if (options.usePlainText() || !Strings.isNullOrEmpty(options.getExperimentalHostEndpoint())) {
         credentials = null;
@@ -180,10 +185,21 @@ final class Adapter {
           new AdapterClientWrapper(adapterClient, attachmentsCache, sessionManager);
 
       // Start listening on the specified host and port.
-      serverSocket =
-          new ServerSocket(
-              options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
-      LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
+      if (options.useProxyTLS()) {
+        try {
+          serverSocket = createSSLServerSocket();
+          LOG.info(
+              "Local TLS server started on {}:{}", options.getInetAddress(), options.getTcpPort());
+        } catch (Exception e) {
+          throw new RuntimeException("Failed to create TLS server socket", e);
+        }
+      } else {
+        serverSocket =
+            new ServerSocket(
+                options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
+        LOG.info(
+            "Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
+      }
 
       if (executor == null) {
         executor = Executors.newCachedThreadPool();
@@ -195,6 +211,8 @@ final class Adapter {
       started = true;
       LOG.info("Adapter started for database '{}'.", options.getDatabaseUri());
 
+    } catch (IllegalArgumentException e) {
+      throw e;
     } catch (IOException | RuntimeException e) {
       throw new AdapterStartException(e);
     }
@@ -266,5 +284,64 @@ final class Adapter {
     public AdapterStartException(Throwable cause) {
       super("Failed to start the adapter.", cause);
     }
+  }
+
+  private ServerSocket createSSLServerSocket() throws Exception {
+    javax.net.ssl.SSLContext sslContext =
+        createSSLContext(options.getProxyTLSCertPath(), options.getProxyTLSKeyPath());
+    return sslContext
+        .getServerSocketFactory()
+        .createServerSocket(
+            options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
+  }
+
+  private javax.net.ssl.SSLContext createSSLContext(String certPath, String keyPath)
+      throws Exception {
+    // 1. Read the FULL certificate chain
+    java.security.cert.CertificateFactory cf =
+        java.security.cert.CertificateFactory.getInstance("X.509");
+    java.util.Collection<? extends java.security.cert.Certificate> certs;
+    try (java.io.FileInputStream certIs = new java.io.FileInputStream(certPath)) {
+      // generateCertificates reads all certs in a bundled PEM file
+      certs = cf.generateCertificates(certIs);
+    }
+    java.security.cert.Certificate[] certChain =
+        certs.toArray(new java.security.cert.Certificate[0]);
+
+    // 2. Parse the Private Key (Requires unencrypted PKCS#8 format)
+    String keyStr =
+        new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(keyPath)))
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replaceAll("\\s", "");
+    byte[] keyBytes = java.util.Base64.getDecoder().decode(keyStr);
+    java.security.spec.PKCS8EncodedKeySpec spec =
+        new java.security.spec.PKCS8EncodedKeySpec(keyBytes);
+
+    // 3. Generate the key, falling back to EC if RSA fails
+    java.security.PrivateKey key;
+    try {
+      key = java.security.KeyFactory.getInstance("RSA").generatePrivate(spec);
+    } catch (java.security.spec.InvalidKeySpecException e) {
+      key = java.security.KeyFactory.getInstance("EC").generatePrivate(spec);
+    }
+
+    // 4. Build the KeyStore
+    java.security.KeyStore ks =
+        java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+    ks.load(null, null); // Initialize empty keystore
+    ks.setKeyEntry("key", key, new char[0], certChain);
+
+    // 5. Initialize the SSLContext
+    javax.net.ssl.KeyManagerFactory kmf =
+        javax.net.ssl.KeyManagerFactory.getInstance(
+            javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+    kmf.init(ks, new char[0]);
+
+    javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLS");
+    // Passing null for TrustManagers uses the default Java trust store
+    sslContext.init(kmf.getKeyManagers(), null, null);
+
+    return sslContext;
   }
 }

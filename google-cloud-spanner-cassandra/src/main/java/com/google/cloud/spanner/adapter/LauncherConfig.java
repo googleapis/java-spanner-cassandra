@@ -63,6 +63,8 @@ public final class LauncherConfig {
     final String experimentalHostEndpoint;
     final String clientCertPath;
     final String clientKeyPath;
+    final String proxyTLSCertPath;
+    final String proxyTLSKeyPath;
     HealthCheckConfig healthCheckConfig = null;
 
     if (userConfigs.getGlobalClientConfigs() != null) {
@@ -84,6 +86,8 @@ public final class LauncherConfig {
       experimentalHostEndpoint = userConfigs.getGlobalClientConfigs().getExperimentalHostEndpoint();
       clientCertPath = userConfigs.getGlobalClientConfigs().getClientCertPath();
       clientKeyPath = userConfigs.getGlobalClientConfigs().getClientKeyPath();
+      proxyTLSCertPath = userConfigs.getGlobalClientConfigs().getProxyTLSCertPath();
+      proxyTLSKeyPath = userConfigs.getGlobalClientConfigs().getProxyTLSKeyPath();
     } else {
       globalSpannerEndpoint = ConfigConstants.DEFAULT_SPANNER_ENDPOINT;
       globalEnableBuiltInMetrics = false;
@@ -91,6 +95,8 @@ public final class LauncherConfig {
       experimentalHostEndpoint = null;
       clientCertPath = null;
       clientKeyPath = null;
+      proxyTLSCertPath = null;
+      proxyTLSKeyPath = null;
     }
 
     List<ListenerConfig> listenerConfigs = new ArrayList<>();
@@ -104,7 +110,9 @@ public final class LauncherConfig {
               usePlainText,
               experimentalHostEndpoint,
               clientCertPath,
-              clientKeyPath));
+              clientKeyPath,
+              proxyTLSCertPath,
+              proxyTLSKeyPath));
     }
 
     return new LauncherConfig(listenerConfigs, healthCheckConfig);
@@ -150,6 +158,8 @@ final class ListenerConfig {
   private final String experimentalHostEndpoint;
   private String clientCertPath;
   private String clientKeyPath;
+  private final String proxyTLSCertPath;
+  private final String proxyTLSKeyPath;
 
   private ListenerConfig(Builder builder) {
     this.databaseUri = builder.databaseUri;
@@ -163,6 +173,8 @@ final class ListenerConfig {
     this.experimentalHostEndpoint = builder.experimentalHostEndpoint;
     this.clientCertPath = builder.clientCertPath;
     this.clientKeyPath = builder.clientKeyPath;
+    this.proxyTLSCertPath = builder.proxyTLSCertPath;
+    this.proxyTLSKeyPath = builder.proxyTLSKeyPath;
   }
 
   public String getDatabaseUri() {
@@ -210,6 +222,14 @@ final class ListenerConfig {
     return clientKeyPath;
   }
 
+  public String getProxyTLSCertPath() {
+    return proxyTLSCertPath;
+  }
+
+  public String getProxyTLSKeyPath() {
+    return proxyTLSKeyPath;
+  }
+
   static ListenerConfig fromListenerConfigs(
       ListenerConfigs listener,
       String globalSpannerEndpoint,
@@ -217,7 +237,9 @@ final class ListenerConfig {
       boolean usePlainText,
       String experimentalHostEndpoint,
       String clientCertPath,
-      String clientKeyPath)
+      String clientKeyPath,
+      String proxyTLSCertPath,
+      String proxyTLSKeyPath)
       throws UnknownHostException {
     String host = listener.getHost() != null ? listener.getHost() : ConfigConstants.DEFAULT_HOST;
     int port = listener.getPort() != null ? listener.getPort() : ConfigConstants.DEFAULT_PORT;
@@ -238,6 +260,7 @@ final class ListenerConfig {
         .setExperimentalHostEndpoint(experimentalHostEndpoint)
         .usePlainText(usePlainText)
         .useClientCert(clientCertPath, clientKeyPath)
+        .useProxyTLS(proxyTLSCertPath, proxyTLSKeyPath)
         .build();
   }
 
@@ -269,6 +292,8 @@ final class ListenerConfig {
         properties.get(ConfigConstants.EXPERIMENTAL_HOST_ENDPOINT_PROP_KEY);
     String clientCertPath = properties.get(ConfigConstants.CLIENT_CERT_PATH_PROP_KEY);
     String clientKeyPath = properties.get(ConfigConstants.CLIENT_KEY_PATH_PROP_KEY);
+    String proxyTLSCertPath = properties.get(ConfigConstants.PROXY_TLS_CERT_PATH_PROP_KEY);
+    String proxyTLSKeyPath = properties.get(ConfigConstants.PROXY_TLS_KEY_PATH_PROP_KEY);
     String databaseUri = properties.get(ConfigConstants.DATABASE_URI_PROP_KEY);
     if (!Strings.isNullOrEmpty(experimentalHostEndpoint)) {
       if (!DatabaseName.isParsableFrom(databaseUri)) {
@@ -288,6 +313,7 @@ final class ListenerConfig {
         .usePlainText(usePlainText)
         .setExperimentalHostEndpoint(experimentalHostEndpoint)
         .useClientCert(clientCertPath, clientKeyPath)
+        .useProxyTLS(proxyTLSCertPath, proxyTLSKeyPath)
         .build();
   }
 
@@ -307,6 +333,8 @@ final class ListenerConfig {
     private String experimentalHostEndpoint;
     private String clientCertPath;
     private String clientKeyPath;
+    private String proxyTLSCertPath;
+    private String proxyTLSKeyPath;
 
     private void validateHostConflict(
         String spannerEndpointToCheck, String experimentalHostEndpointToCheck) {
@@ -368,6 +396,12 @@ final class ListenerConfig {
     public Builder useClientCert(String clientCertPath, String clientKeyPath) {
       this.clientCertPath = clientCertPath;
       this.clientKeyPath = clientKeyPath;
+      return this;
+    }
+
+    public Builder useProxyTLS(String proxyTLSCertPath, String proxyTLSKeyPath) {
+      this.proxyTLSCertPath = proxyTLSCertPath;
+      this.proxyTLSKeyPath = proxyTLSKeyPath;
       return this;
     }
 

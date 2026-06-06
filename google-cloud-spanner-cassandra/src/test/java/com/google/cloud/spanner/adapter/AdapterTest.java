@@ -104,4 +104,31 @@ public final class AdapterTest {
     // Adapter is in the not-started state.
     assertThrows(IllegalStateException.class, adapter::stop);
   }
+
+  @Test
+  public void startWithInvalidTLSConfig() {
+    // Only cert specified
+    AdapterOptions options1 =
+        new AdapterOptions.Builder()
+            .spannerEndpoint(TEST_HOST)
+            .tcpPort(TEST_PORT)
+            .databaseUri(TEST_DATABASE_URI)
+            .inetAddress(inetAddress)
+            .useProxyTLS("cert.pem", null)
+            .build();
+    Adapter adapter1 = new Adapter(options1);
+    assertThrows(IllegalArgumentException.class, adapter1::start);
+
+    // Only key specified
+    AdapterOptions options2 =
+        new AdapterOptions.Builder()
+            .spannerEndpoint(TEST_HOST)
+            .tcpPort(TEST_PORT)
+            .databaseUri(TEST_DATABASE_URI)
+            .inetAddress(inetAddress)
+            .useProxyTLS(null, "key.pem")
+            .build();
+    Adapter adapter2 = new Adapter(options2);
+    assertThrows(IllegalArgumentException.class, adapter2::start);
+  }
 }

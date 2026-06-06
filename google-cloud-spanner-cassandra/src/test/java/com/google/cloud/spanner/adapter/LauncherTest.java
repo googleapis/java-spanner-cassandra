@@ -83,7 +83,11 @@ public class LauncherTest {
   public void testRun_withMultipleListeners_startsMultipleAdapters() throws Exception {
     UserConfigs userConfigs =
         new UserConfigs(
-            new GlobalClientConfigs("spanner.googleapis.com:443", true, "127.0.0.1:8080"),
+            new GlobalClientConfigs.Builder()
+                .spannerEndpoint("spanner.googleapis.com:443")
+                .enableBuiltInMetrics(true)
+                .healthCheckEndpoint("127.0.0.1:8080")
+                .build(),
             Arrays.asList(
                 new ListenerConfigs(
                     "listener_1",
