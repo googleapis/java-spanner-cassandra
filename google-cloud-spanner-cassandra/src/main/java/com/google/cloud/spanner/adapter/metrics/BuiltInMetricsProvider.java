@@ -15,7 +15,6 @@ limitations under the License.
 */
 package com.google.cloud.spanner.adapter.metrics;
 
-import static com.google.cloud.opentelemetry.detection.GCPPlatformDetector.SupportedPlatform.GOOGLE_KUBERNETES_ENGINE;
 import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.CLIENT_HASH_KEY;
 import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.CLIENT_NAME_KEY;
 import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.CLIENT_UID_KEY;
@@ -28,9 +27,6 @@ import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.PR
 import static com.google.cloud.spanner.adapter.metrics.BuiltInMetricsConstant.STATUS_KEY;
 
 import com.google.api.gax.core.GaxProperties;
-import com.google.cloud.opentelemetry.detection.AttributeKeys;
-import com.google.cloud.opentelemetry.detection.DetectedPlatform;
-import com.google.cloud.opentelemetry.detection.GCPPlatformDetector;
 import com.google.cloud.opentelemetry.metric.GoogleCloudMetricExporter;
 import com.google.cloud.opentelemetry.metric.MetricConfiguration;
 import com.google.cloud.opentelemetry.metric.MonitoredResourceDescription;
@@ -38,8 +34,10 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.contrib.gcp.resource.GCPResourceProvider;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.SdkMeterProviderBuilder;
@@ -92,12 +90,17 @@ public final class BuiltInMetricsProvider {
                 .setResourceAttributesFilter(MetricConfiguration.NO_RESOURCE_ATTRIBUTES)
                 .build());
 
+    GCPResourceProvider gcpResourceProvider = new GCPResourceProvider();
+
     sdkMeterProviderBuilder
         .registerMetricReader(
             PeriodicMetricReader.builder(metricExporter)
                 .setInterval(java.time.Duration.ofSeconds(60))
                 .build())
-        .addResource(Resource.create(createResourceAttributes(projectId, instanceId)));
+        .addResource(
+            Resource.create(
+                createResourceAttributes(
+                    projectId, instanceId, gcpResourceProvider.getAttributes())));
 
     // Register built-in metrics.
     BuiltInMetricsConstant.getAllViews().forEach(sdkMeterProviderBuilder::registerView);
@@ -108,14 +111,15 @@ public final class BuiltInMetricsProvider {
     return this.openTelemetry;
   }
 
-  Attributes createResourceAttributes(String projectId, String instanceId) {
+  Attributes createResourceAttributes(
+      String projectId, String instanceId, Attributes detectedAttributes) {
     AttributesBuilder attributesBuilder =
         Attributes.builder()
             .put(PROJECT_ID_KEY.getKey(), projectId)
             .put(INSTANCE_CONFIG_ID_KEY.getKey(), "unknown")
             .put(CLIENT_HASH_KEY.getKey(), generateClientHash(getDefaultTaskValue()))
             .put(INSTANCE_ID_KEY.getKey(), instanceId)
-            .put(LOCATION_ID_KEY.getKey(), detectClientLocation())
+            .put(LOCATION_ID_KEY.getKey(), detectClientLocation(detectedAttributes))
             .put("gcp.resource_type", BuiltInMetricsConstant.SPANNER_RESOURCE_TYPE);
     return attributesBuilder.build();
   }
@@ -161,13 +165,14 @@ public final class BuiltInMetricsProvider {
     return String.format("%06x", shiftedValue);
   }
 
-  private static String detectClientLocation() {
-    GCPPlatformDetector detector = GCPPlatformDetector.DEFAULT_INSTANCE;
-    DetectedPlatform detectedPlatform = detector.detectPlatform();
-    // All platform except GKE uses "cloud_region" for region attribute.
-    String region = detectedPlatform.getAttributes().get("cloud_region");
-    if (detectedPlatform.getSupportedPlatform() == GOOGLE_KUBERNETES_ENGINE) {
-      region = detectedPlatform.getAttributes().get(AttributeKeys.GKE_CLUSTER_LOCATION);
+  private static String detectClientLocation(Attributes detectedResourceAttributes) {
+    // All platform except GKE uses "cloud.region" for region attribute.
+    // GKE could either use "cloud.region" or "cloud.availability_zone" for region attribute.
+    String region = detectedResourceAttributes.get(AttributeKey.stringKey("cloud.region"));
+    String gkeZonalClusterLocation =
+        detectedResourceAttributes.get(AttributeKey.stringKey("cloud.availability_zone"));
+    if (region == null && gkeZonalClusterLocation != null) {
+      region = gkeZonalClusterLocation;
     }
     return region == null ? "global" : region;
   }
