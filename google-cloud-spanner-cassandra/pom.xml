@@ -67,8 +67,12 @@
             <artifactId>opentelemetry-sdk</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.google.cloud.opentelemetry</groupId>
-            <artifactId>detector-resources-support</artifactId>
+            <groupId>io.opentelemetry.contrib</groupId>
+            <artifactId>opentelemetry-gcp-resources</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-extension-autoconfigure-spi</artifactId>
         </dependency>
         <dependency>
             <groupId>com.google.cloud.opentelemetry</groupId>
