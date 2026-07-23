@@ -28,8 +28,8 @@ import com.google.api.gax.rpc.HeaderProvider;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.NoCredentials;
+import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
@@ -95,7 +95,7 @@ final class Adapter {
 
     try {
       Credentials credentials = options.getCredentials();
-      if (options.usePlainText() || !Strings.isNullOrEmpty(options.getExperimentalHostEndpoint())) {
+      if (options.usePlainText() || options.getInstanceType() == InstanceType.OMNI) {
         credentials = null;
       } else if (credentials == null) {
         credentials = GoogleCredentials.getApplicationDefault();
@@ -114,8 +114,7 @@ final class Adapter {
       if (options.usePlainText()) {
         LOG.warn("Using plain text channel. This should not be used in production.");
         channelProviderBuilder.setChannelConfigurator(ManagedChannelBuilder::usePlaintext);
-      } else if (!Strings.isNullOrEmpty(options.getExperimentalHostEndpoint())
-          && options.useClientCert()) {
+      } else if (options.getInstanceType() == InstanceType.OMNI && options.useClientCert()) {
         SslContext mTLSContext =
             GrpcSslContexts.forClient()
                 .keyManager(
@@ -160,11 +159,7 @@ final class Adapter {
                       options.getChannelProvider(), channelProviderBuilder.build()))
               .setCredentialsProvider(credentialsProvider)
               .setHeaderProvider(headerProvider);
-      if (!Strings.isNullOrEmpty(options.getExperimentalHostEndpoint())) {
-        settingsBuilder.setEndpoint(options.getExperimentalHostEndpoint());
-      } else {
-        settingsBuilder.setEndpoint(options.getSpannerEndpoint());
-      }
+      settingsBuilder.setEndpoint(options.getSpannerEndpoint());
 
       AdapterSettings settings = settingsBuilder.build();
 

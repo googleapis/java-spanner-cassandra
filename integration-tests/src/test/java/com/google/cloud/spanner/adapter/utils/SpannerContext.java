@@ -28,6 +28,7 @@ import com.google.cloud.spanner.SpannerOptions;
 import com.google.cloud.spanner.adapter.SpannerCqlRetryPolicy;
 import com.google.cloud.spanner.adapter.SpannerCqlSession;
 import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder;
+import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
 import com.google.cloud.spanner.admin.database.v1.DatabaseAdminClient;
 import com.google.cloud.spanner.admin.database.v1.DatabaseAdminSettings;
 import com.google.common.base.Strings;
@@ -49,13 +50,12 @@ import java.util.concurrent.TimeUnit;
 public class SpannerContext extends DatabaseContext {
 
   private static final String ENV_VAR_SPANNER_ENDPOINT = "SPANNER_ENDPOINT";
-  private static final String EXPERIMENTAL_HOST_ENDPOINT_PROPERTY =
-      "spanner_cassandra.experimental_host";
+  private static final String INSTANCE_TYPE_PROPERTY = "spanner_cassandra.instance_type";
   private static final String USE_PLAIN_TEXT_PROPERTY = "spanner_cassandra.use_plain_text";
   private static final String CLIENT_CERT_PATH_PROPERTY = "spanner_cassandra.client_cert_path";
   private static final String CLIENT_KEY_PATH_PROPERTY = "spanner_cassandra.client_key_path";
-  private static final String EXPERIMENTAL_HOST_INSTANCE = "projects/default/instances/default";
-  private static final String EXPERIMENTAL_HOST_ID = "default";
+  private static final String SPANNER_OMNI_INSTANCE = "projects/default/instances/default";
+  private static final String SPANNER_OMNI_ID = "default";
 
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
 
@@ -64,21 +64,35 @@ public class SpannerContext extends DatabaseContext {
   private final DatabaseName databaseName;
 
   private DatabaseAdminClient databaseAdminClient;
-  private Spanner experimentalHostSpanner;
+  private Spanner spannerOmni;
   private CqlSession session;
 
-  /* Determines whether endpoint is an experimental host */
-  private boolean isRunningOnExperimentalHost() {
-    return !Strings.isNullOrEmpty(System.getProperty(EXPERIMENTAL_HOST_ENDPOINT_PROPERTY));
+  private InstanceType getInstanceType() {
+    String typeProp = System.getProperty(INSTANCE_TYPE_PROPERTY);
+    if (!Strings.isNullOrEmpty(typeProp)) {
+      return InstanceType.valueOf(typeProp.toUpperCase());
+    }
+    if (!Strings.isNullOrEmpty(getSpannerEndpoint())) {
+      return InstanceType.OMNI;
+    }
+    return InstanceType.CLOUD;
+  }
+
+  private String getSpannerEndpoint() {
+    String endpoint = System.getProperty(ENV_VAR_SPANNER_ENDPOINT);
+    if (Strings.isNullOrEmpty(endpoint)) {
+      endpoint = System.getenv(ENV_VAR_SPANNER_ENDPOINT);
+    }
+    return endpoint;
   }
 
   public SpannerContext() {
     super("Spanner");
     databaseId = keyspace;
     final String instanceNameStr =
-        !isRunningOnExperimentalHost()
+        getInstanceType() != InstanceType.OMNI
             ? System.getenv("INTEGRATION_TEST_INSTANCE")
-            : EXPERIMENTAL_HOST_INSTANCE;
+            : SPANNER_OMNI_INSTANCE;
     if (instanceNameStr == null) {
       throw new NullPointerException("Environment variable INTEGRATION_TEST_INSTANCE must be set");
     }
@@ -100,7 +114,7 @@ public class SpannerContext extends DatabaseContext {
 
   @Override
   public void createTables(TableDefinition... tableDefinitions) throws Exception {
-    if (databaseAdminClient == null && !isRunningOnExperimentalHost()) {
+    if (databaseAdminClient == null && getInstanceType() != InstanceType.OMNI) {
       throw new IllegalStateException("initialize() not called.");
     }
     List<String> ddls = new ArrayList<>();
@@ -108,13 +122,13 @@ public class SpannerContext extends DatabaseContext {
       ddls.add("DROP TABLE IF EXISTS " + tableDefinition.tableName);
       ddls.add(generateSpannerDdl(tableDefinition.tableName, tableDefinition.columnDefinitions));
     }
-    if (isRunningOnExperimentalHost()) {
-      if (experimentalHostSpanner == null) {
+    if (getInstanceType() == InstanceType.OMNI) {
+      if (spannerOmni == null) {
         throw new IllegalStateException("initialize() not called.");
       }
-      experimentalHostSpanner
+      spannerOmni
           .getDatabaseAdminClient()
-          .updateDatabaseDdl(EXPERIMENTAL_HOST_ID, databaseId, ddls, null)
+          .updateDatabaseDdl(SPANNER_OMNI_ID, databaseId, ddls, null)
           .get(5, TimeUnit.MINUTES);
     } else {
       databaseAdminClient.updateDatabaseDdlAsync(databaseName, ddls).get(5, TimeUnit.MINUTES);
@@ -128,9 +142,9 @@ public class SpannerContext extends DatabaseContext {
     }
   }
 
-  private void initializeExperimentalHostSpanner() {
-    String endpoint = System.getProperty(EXPERIMENTAL_HOST_ENDPOINT_PROPERTY);
-    if (!endpoint.startsWith("http")) {
+  private void initializeSpannerOmni() {
+    String endpoint = getSpannerEndpoint();
+    if (!Strings.isNullOrEmpty(endpoint) && !endpoint.startsWith("http")) {
       if (Boolean.getBoolean(USE_PLAIN_TEXT_PROPERTY)) {
         endpoint = "http://" + endpoint;
       } else {
@@ -149,13 +163,13 @@ public class SpannerContext extends DatabaseContext {
           System.getProperty(CLIENT_CERT_PATH_PROPERTY),
           System.getProperty(CLIENT_KEY_PATH_PROPERTY));
     }
-    experimentalHostSpanner = builder.build().getService();
+    spannerOmni = builder.build().getService();
   }
 
   @Override
   public void initialize() throws Exception {
-    if (!isRunningOnExperimentalHost()) {
-      experimentalHostSpanner = null;
+    if (getInstanceType() != InstanceType.OMNI) {
+      spannerOmni = null;
       final String env_var_endpoint = System.getenv(ENV_VAR_SPANNER_ENDPOINT);
       DatabaseAdminSettings settings =
           DatabaseAdminSettings.newBuilder()
@@ -166,12 +180,12 @@ public class SpannerContext extends DatabaseContext {
           .createDatabaseAsync(instanceName, "CREATE DATABASE " + databaseId)
           .get(5, TimeUnit.MINUTES);
     } else {
-      initializeExperimentalHostSpanner();
+      initializeSpannerOmni();
       databaseAdminClient = null;
-      experimentalHostSpanner
+      spannerOmni
           .getDatabaseAdminClient()
           .createDatabase(
-              EXPERIMENTAL_HOST_ID,
+              SPANNER_OMNI_ID,
               "CREATE DATABASE " + databaseId,
               Dialect.GOOGLE_STANDARD_SQL,
               Collections.emptyList())
@@ -200,10 +214,12 @@ public class SpannerContext extends DatabaseContext {
                         DefaultDriverOption.CONTROL_CONNECTION_TIMEOUT, Duration.ofMinutes(5))
                     .withDuration(DefaultDriverOption.HEARTBEAT_TIMEOUT, Duration.ofMinutes(1))
                     .build());
-    if (isRunningOnExperimentalHost()) {
-      sessionBuilder
-          .setExperimentalHostEndpoint(System.getProperty(EXPERIMENTAL_HOST_ENDPOINT_PROPERTY))
-          .setUsePlainText(false);
+    if (getInstanceType() == InstanceType.OMNI) {
+      String endpoint = getSpannerEndpoint();
+      if (!Strings.isNullOrEmpty(endpoint)) {
+        sessionBuilder.setHost(endpoint);
+      }
+      sessionBuilder.setInstanceType(InstanceType.OMNI).setUsePlainText(false);
       if (Boolean.getBoolean(USE_PLAIN_TEXT_PROPERTY)) {
         sessionBuilder.setUsePlainText(true);
       } else if (!Strings.isNullOrEmpty(System.getProperty(CLIENT_CERT_PATH_PROPERTY))
@@ -221,11 +237,9 @@ public class SpannerContext extends DatabaseContext {
     if (databaseAdminClient != null) {
       databaseAdminClient.dropDatabase(databaseName);
       databaseAdminClient.close();
-    } else if (experimentalHostSpanner != null) {
-      experimentalHostSpanner
-          .getDatabaseAdminClient()
-          .dropDatabase(EXPERIMENTAL_HOST_ID, databaseId);
-      experimentalHostSpanner.close();
+    } else if (spannerOmni != null) {
+      spannerOmni.getDatabaseAdminClient().dropDatabase(SPANNER_OMNI_ID, databaseId);
+      spannerOmni.close();
     }
     if (session != null) {
       session.close();

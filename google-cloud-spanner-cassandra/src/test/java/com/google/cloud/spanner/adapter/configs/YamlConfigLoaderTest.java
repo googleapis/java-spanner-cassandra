@@ -19,6 +19,7 @@ package com.google.cloud.spanner.adapter.configs;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 
+import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -178,8 +179,10 @@ public class YamlConfigLoaderTest {
 
       assertThat(userConfigs).isNotNull();
       assertThat(userConfigs.getGlobalClientConfigs()).isNotNull();
-      assertThat(userConfigs.getGlobalClientConfigs().getExperimentalHostEndpoint())
+      assertThat(userConfigs.getGlobalClientConfigs().getSpannerEndpoint())
           .isEqualTo("localhost:15000");
+      assertThat(userConfigs.getGlobalClientConfigs().getInstanceType())
+          .isEqualTo(InstanceType.OMNI);
       assertThat(userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics()).isTrue();
       assertThat(userConfigs.getGlobalClientConfigs().getHealthCheckEndpoint())
           .isEqualTo("127.0.0.1:8080");

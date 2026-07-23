@@ -16,6 +16,7 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter.configs;
 
+import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
 import com.google.common.base.Strings;
 import java.util.Map;
 
@@ -25,7 +26,7 @@ public class GlobalClientConfigs {
   private final Boolean enableBuiltInMetrics;
   private final String healthCheckEndpoint;
   private final Boolean usePlainText;
-  private final String experimentalHostEndpoint;
+  private final InstanceType instanceType;
   private final String clientCertPath;
   private final String clientKeyPath;
 
@@ -35,20 +36,64 @@ public class GlobalClientConfigs {
       String healthCheckEndpoint,
       Boolean usePlainText,
       String experimentalHostEndpoint,
+      InstanceType instanceType,
       String clientCertPath,
       String clientKeyPath) {
+    if (!Strings.isNullOrEmpty(experimentalHostEndpoint)) {
+      if (Strings.isNullOrEmpty(spannerEndpoint)) {
+        spannerEndpoint = experimentalHostEndpoint;
+      }
+      if (instanceType == null) {
+        instanceType = InstanceType.OMNI;
+      }
+    }
     this.spannerEndpoint = spannerEndpoint;
     this.enableBuiltInMetrics = enableBuiltInMetrics;
     this.healthCheckEndpoint = healthCheckEndpoint;
     this.usePlainText = usePlainText;
-    this.experimentalHostEndpoint = experimentalHostEndpoint;
+    this.instanceType = instanceType;
     this.clientCertPath = clientCertPath;
     this.clientKeyPath = clientKeyPath;
   }
 
+  /**
+   * @deprecated Use {@link #GlobalClientConfigs(String, Boolean, String, Boolean, String,
+   *     InstanceType, String, String)} instead.
+   */
+  @Deprecated
+  public GlobalClientConfigs(
+      String spannerEndpoint,
+      Boolean enableBuiltInMetrics,
+      String healthCheckEndpoint,
+      Boolean usePlainText,
+      String experimentalHostEndpoint,
+      String instanceType,
+      String clientCertPath,
+      String clientKeyPath) {
+    this(
+        spannerEndpoint,
+        enableBuiltInMetrics,
+        healthCheckEndpoint,
+        usePlainText,
+        experimentalHostEndpoint,
+        Strings.isNullOrEmpty(instanceType)
+            ? null
+            : InstanceType.valueOf(instanceType.toUpperCase()),
+        clientCertPath,
+        clientKeyPath);
+  }
+
   public GlobalClientConfigs(
       String spannerEndpoint, Boolean enableBuiltInMetrics, String healthCheckEndpoint) {
-    this(spannerEndpoint, enableBuiltInMetrics, healthCheckEndpoint, null, null, null, null);
+    this(
+        spannerEndpoint,
+        enableBuiltInMetrics,
+        healthCheckEndpoint,
+        null,
+        null,
+        (InstanceType) null,
+        null,
+        null);
   }
 
   public GlobalClientConfigs(
@@ -57,9 +102,21 @@ public class GlobalClientConfigs {
       String healthCheckEndpoint,
       Boolean usePlainText) {
     this(
-        spannerEndpoint, enableBuiltInMetrics, healthCheckEndpoint, usePlainText, null, null, null);
+        spannerEndpoint,
+        enableBuiltInMetrics,
+        healthCheckEndpoint,
+        usePlainText,
+        null,
+        (InstanceType) null,
+        null,
+        null);
   }
 
+  /**
+   * @deprecated Use {@link #GlobalClientConfigs(String, Boolean, String, Boolean, String,
+   *     InstanceType, String, String)} instead.
+   */
+  @Deprecated
   public GlobalClientConfigs(
       String spannerEndpoint,
       Boolean enableBuiltInMetrics,
@@ -72,6 +129,7 @@ public class GlobalClientConfigs {
         healthCheckEndpoint,
         usePlainText,
         experimentalHostEndpoint,
+        (InstanceType) null,
         null,
         null);
   }
@@ -82,15 +140,24 @@ public class GlobalClientConfigs {
     String healthCheckEndpoint = (String) yamlMap.get("healthCheckEndpoint");
     Boolean usePlainText = (Boolean) yamlMap.get("usePlainText");
     String experimentalHostEndpoint = (String) yamlMap.get("experimentalHostEndpoint");
+    String instanceTypeStr = (String) yamlMap.get("instanceType");
+    InstanceType instanceType =
+        Strings.isNullOrEmpty(instanceTypeStr)
+            ? null
+            : InstanceType.valueOf(instanceTypeStr.toUpperCase());
     String clientCertPath = (String) yamlMap.get("clientCertPath");
     String clientKeyPath = (String) yamlMap.get("clientKeyPath");
+
     if (Strings.isNullOrEmpty(clientCertPath) || Strings.isNullOrEmpty(clientKeyPath)) {
       return new GlobalClientConfigs(
           spannerEndpoint,
           enableBuiltInMetrics,
           healthCheckEndpoint,
           usePlainText,
-          experimentalHostEndpoint);
+          experimentalHostEndpoint,
+          instanceType,
+          null,
+          null);
     }
     return new GlobalClientConfigs(
         spannerEndpoint,
@@ -98,6 +165,7 @@ public class GlobalClientConfigs {
         healthCheckEndpoint,
         usePlainText,
         experimentalHostEndpoint,
+        instanceType,
         clientCertPath,
         clientKeyPath);
   }
@@ -118,8 +186,16 @@ public class GlobalClientConfigs {
     return usePlainText;
   }
 
+  /**
+   * @deprecated Use {@link #getSpannerEndpoint()} and {@link #getInstanceType()} instead.
+   */
+  @Deprecated
   public String getExperimentalHostEndpoint() {
-    return experimentalHostEndpoint;
+    return instanceType == InstanceType.OMNI ? spannerEndpoint : null;
+  }
+
+  public InstanceType getInstanceType() {
+    return instanceType;
   }
 
   public String getClientCertPath() {

@@ -46,6 +46,13 @@ import org.slf4j.LoggerFactory;
 @NotThreadSafe
 public final class SpannerCqlSessionBuilder
     extends SessionBuilder<SpannerCqlSessionBuilder, SpannerCqlSession> {
+
+  /** Specifies the type of Spanner instance to connect to (CLOUD or OMNI). */
+  public enum InstanceType {
+    CLOUD,
+    OMNI
+  }
+
   private static final Logger LOG = LoggerFactory.getLogger(SpannerCqlSessionBuilder.class);
   private final BuiltInMetricsProvider builtInMetricsProvider = BuiltInMetricsProvider.INSTANCE;
   private static final int DEFAULT_PORT = 9042;
@@ -54,7 +61,7 @@ public final class SpannerCqlSessionBuilder
   private static final int LARGEST_MAX_COMMIT_DELAY_MILLIS = 500;
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
   private static final String ENV_VAR_SPANNER_ENDPOINT = "SPANNER_ENDPOINT";
-  private static final String EXPERIMENTAL_HOST_ID = "default";
+  private static final String SPANNER_OMNI_ID = "default";
 
   private InetAddress iNetAddress;
   private int port;
@@ -68,7 +75,7 @@ public final class SpannerCqlSessionBuilder
   private Credentials credentials;
   private boolean useVirtualThreads;
   private boolean usePlainText;
-  private String experimentalHostEndpoint;
+  private InstanceType instanceType = InstanceType.CLOUD;
   private String clientCertPath = null;
   private String clientKeyPath = null;
 
@@ -160,15 +167,32 @@ public final class SpannerCqlSessionBuilder
     return this;
   }
 
-  /** (Optional, default null) Experimental Host endpoint */
-  public SpannerCqlSessionBuilder setExperimentalHostEndpoint(String experimentalHostEndpoint) {
-    this.experimentalHostEndpoint = experimentalHostEndpoint;
+  /**
+   * (Optional, default CLOUD) Specifies the type of Spanner instance to connect to. Setting it to
+   * OMNI is mandatory when connecting to a Spanner Omni instance.
+   */
+  public SpannerCqlSessionBuilder setInstanceType(InstanceType instanceType) {
+    this.instanceType = instanceType;
     return this;
   }
 
   /**
-   * (Optional, default null) Enables mTLS connection to experimental host endpoint using client
-   * certificate and key This should only be used for connecting to experimental host instances.
+   * (Optional, default null) Experimental Host endpoint.
+   *
+   * @deprecated Use {@link #setHost(String)} and {@link #setInstanceType(InstanceType)} instead.
+   */
+  @Deprecated
+  public SpannerCqlSessionBuilder setExperimentalHostEndpoint(String experimentalHostEndpoint) {
+    if (!Strings.isNullOrEmpty(experimentalHostEndpoint)) {
+      this.host = experimentalHostEndpoint;
+      this.instanceType = InstanceType.OMNI;
+    }
+    return this;
+  }
+
+  /**
+   * (Optional, default null) Enables mTLS connection to Spanner Omni instance using client
+   * certificate and key. This should only be used for connecting to Spanner Omni instances.
    */
   public SpannerCqlSessionBuilder setClientCertPathAndKey(
       String clientCertPath, String clientKeyPath) {
@@ -279,10 +303,8 @@ public final class SpannerCqlSessionBuilder
 
   private void createAndStartAdapter() {
 
-    if (!Strings.isNullOrEmpty(experimentalHostEndpoint)
-        && !DatabaseName.isParsableFrom(databaseUri)) {
-      databaseUri =
-          DatabaseName.of(EXPERIMENTAL_HOST_ID, EXPERIMENTAL_HOST_ID, databaseUri).toString();
+    if (instanceType == InstanceType.OMNI && !DatabaseName.isParsableFrom(databaseUri)) {
+      databaseUri = DatabaseName.of(SPANNER_OMNI_ID, SPANNER_OMNI_ID, databaseUri).toString();
     }
     DatabaseName databaseName = DatabaseName.parse(databaseUri);
     OpenTelemetry openTelemetry =
@@ -308,7 +330,7 @@ public final class SpannerCqlSessionBuilder
             .metricsRecorder(metricsRecorder)
             .useVirtualThreads(useVirtualThreads)
             .usePlainText(usePlainText)
-            .setExperimentalHostEndpoint(experimentalHostEndpoint)
+            .setInstanceType(instanceType)
             .useClientCert(clientCertPath, clientKeyPath)
             .build();
     adapter = new Adapter(adapterOptions);

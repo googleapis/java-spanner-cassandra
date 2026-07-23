@@ -2,7 +2,8 @@
 globalClientConfigs:
   enableBuiltInMetrics: true
   healthCheckEndpoint: "127.0.0.1:8080"
-  experimentalHostEndpoint: "localhost:15000"
+  spannerEndpoint: "localhost:15000"
+  instanceType: "omni"
   clientCertPath: "/path/to/client.crt"
   clientKeyPath: "/path/to/client.key.pkcs8"
 

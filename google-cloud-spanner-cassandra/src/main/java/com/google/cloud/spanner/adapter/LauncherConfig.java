@@ -16,6 +16,7 @@ limitations under the License.
 
 package com.google.cloud.spanner.adapter;
 
+import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
 import com.google.cloud.spanner.adapter.configs.ConfigConstants;
 import com.google.cloud.spanner.adapter.configs.ListenerConfigs;
 import com.google.cloud.spanner.adapter.configs.UserConfigs;
@@ -60,16 +61,24 @@ public final class LauncherConfig {
     final String globalSpannerEndpoint;
     final boolean globalEnableBuiltInMetrics;
     final boolean usePlainText;
-    final String experimentalHostEndpoint;
+    final InstanceType instanceType;
     final String clientCertPath;
     final String clientKeyPath;
     HealthCheckConfig healthCheckConfig = null;
 
     if (userConfigs.getGlobalClientConfigs() != null) {
-      globalSpannerEndpoint =
-          userConfigs.getGlobalClientConfigs().getSpannerEndpoint() != null
-              ? userConfigs.getGlobalClientConfigs().getSpannerEndpoint()
-              : ConfigConstants.DEFAULT_SPANNER_ENDPOINT;
+      String expHost = userConfigs.getGlobalClientConfigs().getExperimentalHostEndpoint();
+      InstanceType type = userConfigs.getGlobalClientConfigs().getInstanceType();
+      if (!Strings.isNullOrEmpty(expHost)) {
+        globalSpannerEndpoint = expHost;
+        instanceType = InstanceType.OMNI;
+      } else {
+        globalSpannerEndpoint =
+            userConfigs.getGlobalClientConfigs().getSpannerEndpoint() != null
+                ? userConfigs.getGlobalClientConfigs().getSpannerEndpoint()
+                : ConfigConstants.DEFAULT_SPANNER_ENDPOINT;
+        instanceType = type != null ? type : InstanceType.CLOUD;
+      }
       globalEnableBuiltInMetrics =
           userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics() != null
               && userConfigs.getGlobalClientConfigs().getEnableBuiltInMetrics();
@@ -81,14 +90,13 @@ public final class LauncherConfig {
       usePlainText =
           userConfigs.getGlobalClientConfigs().getUsePlainText() != null
               && userConfigs.getGlobalClientConfigs().getUsePlainText();
-      experimentalHostEndpoint = userConfigs.getGlobalClientConfigs().getExperimentalHostEndpoint();
       clientCertPath = userConfigs.getGlobalClientConfigs().getClientCertPath();
       clientKeyPath = userConfigs.getGlobalClientConfigs().getClientKeyPath();
     } else {
       globalSpannerEndpoint = ConfigConstants.DEFAULT_SPANNER_ENDPOINT;
       globalEnableBuiltInMetrics = false;
       usePlainText = false;
-      experimentalHostEndpoint = null;
+      instanceType = InstanceType.CLOUD;
       clientCertPath = null;
       clientKeyPath = null;
     }
@@ -102,7 +110,7 @@ public final class LauncherConfig {
               globalSpannerEndpoint,
               globalEnableBuiltInMetrics,
               usePlainText,
-              experimentalHostEndpoint,
+              instanceType,
               clientCertPath,
               clientKeyPath));
     }
@@ -138,7 +146,7 @@ public final class LauncherConfig {
 
 /** Encapsulates the configuration for a single Adapter listener. */
 final class ListenerConfig {
-  private static final String EXPERIMENTAL_HOST_ID = "default";
+  private static final String SPANNER_OMNI_ID = "default";
   private final String databaseUri;
   private final InetAddress hostAddress;
   private final int port;
@@ -147,7 +155,7 @@ final class ListenerConfig {
   @Nullable private final Integer maxCommitDelayMillis;
   private final boolean enableBuiltInMetrics;
   private final boolean usePlainText;
-  private final String experimentalHostEndpoint;
+  private final InstanceType instanceType;
   private String clientCertPath;
   private String clientKeyPath;
 
@@ -160,7 +168,7 @@ final class ListenerConfig {
     this.maxCommitDelayMillis = builder.maxCommitDelayMillis;
     this.enableBuiltInMetrics = builder.enableBuiltInMetrics;
     this.usePlainText = builder.usePlainText;
-    this.experimentalHostEndpoint = builder.experimentalHostEndpoint;
+    this.instanceType = builder.instanceType;
     this.clientCertPath = builder.clientCertPath;
     this.clientKeyPath = builder.clientKeyPath;
   }
@@ -198,8 +206,8 @@ final class ListenerConfig {
     return usePlainText;
   }
 
-  public String getExperimentalHostEndpoint() {
-    return experimentalHostEndpoint;
+  public InstanceType getInstanceType() {
+    return instanceType;
   }
 
   public String getClientCertPath() {
@@ -215,7 +223,7 @@ final class ListenerConfig {
       String globalSpannerEndpoint,
       boolean globalEnableBuiltInMetrics,
       boolean usePlainText,
-      String experimentalHostEndpoint,
+      InstanceType instanceType,
       String clientCertPath,
       String clientKeyPath)
       throws UnknownHostException {
@@ -235,7 +243,7 @@ final class ListenerConfig {
         .numGrpcChannels(numGrpcChannels)
         .maxCommitDelayMillis(maxCommitDelayMillis)
         .enableBuiltInMetrics(globalEnableBuiltInMetrics)
-        .setExperimentalHostEndpoint(experimentalHostEndpoint)
+        .setInstanceType(instanceType)
         .usePlainText(usePlainText)
         .useClientCert(clientCertPath, clientKeyPath)
         .build();
@@ -265,15 +273,21 @@ final class ListenerConfig {
     boolean usePlainText =
         Boolean.parseBoolean(
             properties.getOrDefault(ConfigConstants.USE_PLAINTEXT_PROP_KEY, "false"));
+    String typeStr = properties.get(ConfigConstants.INSTANCE_TYPE_PROP_KEY);
+    InstanceType instanceType =
+        typeStr != null ? InstanceType.valueOf(typeStr.toUpperCase()) : InstanceType.CLOUD;
     String experimentalHostEndpoint =
         properties.get(ConfigConstants.EXPERIMENTAL_HOST_ENDPOINT_PROP_KEY);
+    if (!Strings.isNullOrEmpty(experimentalHostEndpoint)) {
+      spannerEndpoint = experimentalHostEndpoint;
+      instanceType = InstanceType.OMNI;
+    }
     String clientCertPath = properties.get(ConfigConstants.CLIENT_CERT_PATH_PROP_KEY);
     String clientKeyPath = properties.get(ConfigConstants.CLIENT_KEY_PATH_PROP_KEY);
     String databaseUri = properties.get(ConfigConstants.DATABASE_URI_PROP_KEY);
-    if (!Strings.isNullOrEmpty(experimentalHostEndpoint)) {
+    if (instanceType == InstanceType.OMNI) {
       if (!DatabaseName.isParsableFrom(databaseUri)) {
-        databaseUri =
-            DatabaseName.of(EXPERIMENTAL_HOST_ID, EXPERIMENTAL_HOST_ID, databaseUri).toString();
+        databaseUri = DatabaseName.of(SPANNER_OMNI_ID, SPANNER_OMNI_ID, databaseUri).toString();
       }
     }
 
@@ -286,7 +300,7 @@ final class ListenerConfig {
         .maxCommitDelayMillis(maxCommitDelayMillis)
         .enableBuiltInMetrics(enableBuiltInMetrics)
         .usePlainText(usePlainText)
-        .setExperimentalHostEndpoint(experimentalHostEndpoint)
+        .setInstanceType(instanceType)
         .useClientCert(clientCertPath, clientKeyPath)
         .build();
   }
@@ -304,19 +318,9 @@ final class ListenerConfig {
     @Nullable private Integer maxCommitDelayMillis;
     private boolean enableBuiltInMetrics;
     private boolean usePlainText;
-    private String experimentalHostEndpoint;
+    private InstanceType instanceType = InstanceType.CLOUD;
     private String clientCertPath;
     private String clientKeyPath;
-
-    private void validateHostConflict(
-        String spannerEndpointToCheck, String experimentalHostEndpointToCheck) {
-      if (!Strings.isNullOrEmpty(spannerEndpointToCheck)
-          && !spannerEndpointToCheck.equals(ConfigConstants.DEFAULT_SPANNER_ENDPOINT)
-          && !Strings.isNullOrEmpty(experimentalHostEndpointToCheck)) {
-        throw new IllegalArgumentException(
-            "Only one of Spanner Host or Experimental Host can be set.");
-      }
-    }
 
     public Builder databaseUri(String databaseUri) {
       this.databaseUri = databaseUri;
@@ -334,7 +338,6 @@ final class ListenerConfig {
     }
 
     public Builder spannerEndpoint(String spannerEndpoint) {
-      validateHostConflict(spannerEndpoint, this.experimentalHostEndpoint);
       this.spannerEndpoint = spannerEndpoint;
       return this;
     }
@@ -359,9 +362,8 @@ final class ListenerConfig {
       return this;
     }
 
-    public Builder setExperimentalHostEndpoint(String experimentalHostEndpoint) {
-      validateHostConflict(this.spannerEndpoint, experimentalHostEndpoint);
-      this.experimentalHostEndpoint = experimentalHostEndpoint;
+    public Builder setInstanceType(InstanceType instanceType) {
+      this.instanceType = instanceType;
       return this;
     }
 

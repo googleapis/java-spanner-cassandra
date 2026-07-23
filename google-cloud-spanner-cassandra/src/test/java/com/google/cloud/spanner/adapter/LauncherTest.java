@@ -237,7 +237,7 @@ public class LauncherTest {
   }
 
   @Test
-  public void testRun_withUseClientCertMode_startsAdapterWithOptions() throws Exception {
+  public void testRun_withUseClientCertMode_deprecatedButWorks() throws Exception {
     Map<String, String> properties = new HashMap<>();
     properties.put("databaseUri", DEFAULT_DATABASE_URI);
     properties.put("host", "127.0.0.1");
@@ -266,7 +266,45 @@ public class LauncherTest {
     assertThat(options.getNumGrpcChannels()).isEqualTo(8);
     assertThat(options.getMaxCommitDelay().get().toMillis()).isEqualTo(100);
     assertThat(options.usePlainText()).isFalse();
-    assertThat(options.getExperimentalHostEndpoint()).isEqualTo("localhost:15000");
+    assertThat(options.getSpannerEndpoint()).isEqualTo("localhost:15000");
+    assertThat(options.getInstanceType()).isEqualTo(SpannerCqlSessionBuilder.InstanceType.OMNI);
+    assertThat(options.getClientCertPath()).isEqualTo("/path/to/client.crt");
+    assertThat(options.getClientKeyPath()).isEqualTo("/path/to/client.key.pkcs8");
+  }
+
+  @Test
+  public void testRun_withUseClientCertMode_startsAdapterWithOptions() throws Exception {
+    Map<String, String> properties = new HashMap<>();
+    properties.put("databaseUri", DEFAULT_DATABASE_URI);
+    properties.put("host", "127.0.0.1");
+    properties.put("port", "9042");
+    properties.put("numGrpcChannels", "8");
+    properties.put("maxCommitDelayMillis", "100");
+    properties.put("enableBuiltInMetrics", "true");
+    properties.put("healthCheckPort", "8080");
+    properties.put("spannerEndpoint", "localhost:15000");
+    properties.put("instanceType", "omni");
+    properties.put("clientCertPath", "/path/to/client.crt");
+    properties.put("clientKeyPath", "/path/to/client.key.pkcs8");
+    LauncherConfig config = LauncherConfig.fromProperties(properties);
+
+    launcher.run(config);
+
+    verify(mockAdapterFactory, times(1)).createAdapter(adapterOptionsCaptor.capture());
+    verify(mockAdapterFactory, times(1)).createHealthCheckServer(any(), eq(8080));
+    verify(mockAdapter, times(1)).start();
+    verify(mockHealthCheckServer).start();
+    verify(mockHealthCheckServer).setReady(true);
+
+    AdapterOptions options = adapterOptionsCaptor.getValue();
+    assertThat(options.getDatabaseUri()).isEqualTo(DEFAULT_DATABASE_URI);
+    assertThat(options.getTcpPort()).isEqualTo(9042);
+    assertThat(options.getInetAddress()).isEqualTo(InetAddress.getByName("127.0.0.1"));
+    assertThat(options.getNumGrpcChannels()).isEqualTo(8);
+    assertThat(options.getMaxCommitDelay().get().toMillis()).isEqualTo(100);
+    assertThat(options.usePlainText()).isFalse();
+    assertThat(options.getSpannerEndpoint()).isEqualTo("localhost:15000");
+    assertThat(options.getInstanceType()).isEqualTo(SpannerCqlSessionBuilder.InstanceType.OMNI);
     assertThat(options.getClientCertPath()).isEqualTo("/path/to/client.crt");
     assertThat(options.getClientKeyPath()).isEqualTo("/path/to/client.key.pkcs8");
   }

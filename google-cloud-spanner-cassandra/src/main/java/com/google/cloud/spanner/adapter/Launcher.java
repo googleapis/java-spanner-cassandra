@@ -18,7 +18,6 @@ package com.google.cloud.spanner.adapter;
 
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
-import com.google.common.base.Strings;
 import com.google.spanner.adapter.v1.DatabaseName;
 import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
@@ -100,7 +99,7 @@ public class Launcher {
   private static final BuiltInMetricsProvider builtInMetricsProvider =
       BuiltInMetricsProvider.INSTANCE;
 
-  private static final String EXPERIMENTAL_HOST_ID = "default";
+  private static final String SPANNER_OMNI_ID = "default";
   private final AdapterFactory adapterFactory;
   private final List<Adapter> adapters = new ArrayList<>();
   private HealthCheckServer healthCheckServer;
@@ -229,7 +228,7 @@ public class Launcher {
             .numGrpcChannels(config.getNumGrpcChannels())
             .metricsRecorder(metricsRecorder)
             .usePlainText(config.usePlainText())
-            .setExperimentalHostEndpoint(config.getExperimentalHostEndpoint())
+            .setInstanceType(config.getInstanceType())
             .useClientCert(config.getClientCertPath(), config.getClientKeyPath());
     if (config.getMaxCommitDelayMillis() != null) {
       opBuilder.maxCommitDelay(Duration.ofMillis(config.getMaxCommitDelayMillis()));
@@ -255,8 +254,8 @@ public class Launcher {
       return DatabaseName.parse(uriOrId);
     }
 
-    if (!Strings.isNullOrEmpty(config.getExperimentalHostEndpoint())) {
-      return DatabaseName.of(EXPERIMENTAL_HOST_ID, EXPERIMENTAL_HOST_ID, uriOrId);
+    if (config.getInstanceType() == SpannerCqlSessionBuilder.InstanceType.OMNI) {
+      return DatabaseName.of(SPANNER_OMNI_ID, SPANNER_OMNI_ID, uriOrId);
     }
 
     // User is trying to connect to Cloud Spanner instance with an invalid database URI. We
