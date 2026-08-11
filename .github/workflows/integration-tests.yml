@@ -8,6 +8,9 @@ on:
       INTEGRATION_TEST_INSTANCE:
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   integration-spanner:
     runs-on: ubuntu-latest
@@ -16,12 +19,14 @@ jobs:
       matrix:
         java: [11]
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-java@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      with:
+        persist-credentials: false
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
       with:
         distribution: temurin
         java-version: ${{matrix.java}}
-    - uses: 'google-github-actions/auth@v2'
+    - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
       with:
         credentials_json: '${{ secrets.SPANNER_CASSANDRA_ADAPTER_CICD_SERVICE_ACCOUNT }}'
     - run: java -version
@@ -38,12 +43,14 @@ jobs:
       matrix:
         java: [11]
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-java@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      with:
+        persist-credentials: false
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
       with:
         distribution: temurin
         java-version: ${{matrix.java}}
-    - uses: 'google-github-actions/auth@v2'
+    - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
       with:
         credentials_json: '${{ secrets.SPANNER_CASSANDRA_ADAPTER_CICD_SERVICE_ACCOUNT }}'
     - run: java -version
