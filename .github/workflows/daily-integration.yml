@@ -30,6 +30,7 @@ jobs:
     - run: .kokoro/build.sh
       env:
         JOB_TYPE: integration-spanner
+        INTEGRATION_TEST_ARGS: -Dspanner_cassandra.instance_type=CLOUD
         INTEGRATION_TEST_INSTANCE: ${{secrets.INTEGRATION_TEST_INSTANCE}}
         SPANNER_ENDPOINT: ${{secrets.SPANNER_DEVEL_ENDPOINT}}
         GOOGLE_SPANNER_CASSANDRA_LOG_SERVER_ERRORS: true
