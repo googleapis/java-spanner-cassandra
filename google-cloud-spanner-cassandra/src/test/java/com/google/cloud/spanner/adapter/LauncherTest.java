@@ -308,4 +308,24 @@ public class LauncherTest {
     assertThat(options.getClientCertPath()).isEqualTo("/path/to/client.crt");
     assertThat(options.getClientKeyPath()).isEqualTo("/path/to/client.key.pkcs8");
   }
+
+  @Test
+  public void testWarnIfNonLoopback_emitsWarningOnlyForNonLoopback() throws Exception {
+    assertThat(Launcher.warnIfNonLoopback(InetAddress.getByName("0.0.0.0"), "listener")).isTrue();
+    assertThat(Launcher.warnIfNonLoopback(InetAddress.getByName("127.0.0.1"), "listener"))
+        .isFalse();
+    assertThat(Launcher.warnIfNonLoopback(InetAddress.getLoopbackAddress(), "health check server"))
+        .isFalse();
+
+    Map<String, String> properties = new HashMap<>();
+    properties.put("databaseUri", DEFAULT_DATABASE_URI);
+    properties.put("host", "0.0.0.0");
+    properties.put("healthCheckPort", "8080");
+    LauncherConfig config = LauncherConfig.fromProperties(properties);
+
+    launcher.run(config);
+    verify(mockAdapterFactory, times(1)).createAdapter(adapterOptionsCaptor.capture());
+    assertThat(adapterOptionsCaptor.getValue().getInetAddress())
+        .isEqualTo(InetAddress.getByName("0.0.0.0"));
+  }
 }

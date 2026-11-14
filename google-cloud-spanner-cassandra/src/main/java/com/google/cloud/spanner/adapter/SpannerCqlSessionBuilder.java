@@ -19,6 +19,7 @@ package com.google.cloud.spanner.adapter;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.session.SessionBuilder;
+import com.datastax.oss.driver.internal.core.metadata.DefaultEndPoint;
 import com.google.api.gax.rpc.TransportChannelProvider;
 import com.google.auth.Credentials;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
@@ -55,8 +56,7 @@ public final class SpannerCqlSessionBuilder
 
   private static final Logger LOG = LoggerFactory.getLogger(SpannerCqlSessionBuilder.class);
   private final BuiltInMetricsProvider builtInMetricsProvider = BuiltInMetricsProvider.INSTANCE;
-  private static final int DEFAULT_PORT = 9042;
-  private static final String DEFAULT_HOST = "0.0.0.0";
+  private static final int DEFAULT_PORT = 0;
   private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
   private static final int LARGEST_MAX_COMMIT_DELAY_MILLIS = 500;
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
@@ -65,6 +65,8 @@ public final class SpannerCqlSessionBuilder
 
   private InetAddress iNetAddress;
   private int port;
+  private EndPoint userContactPoint;
+  private EndPoint registeredAdapterEndPoint;
   private Adapter adapter;
   private int numGrpcChannels = DEFAULT_NUM_GRPC_CHANNELS;
   private String databaseUri = null;
@@ -225,11 +227,10 @@ public final class SpannerCqlSessionBuilder
         CompletableFuture.runAsync(this::createAndStartAdapter);
 
     // After the Adapter starts, build the CQL session.
-    return adapterStartFuture.thenCompose(
-        v -> {
-          LOG.info("Creating CQL session for database URI: {}", databaseUri);
-          return super.buildAsync();
-        });
+    return adapterStartFuture.thenCompose(v -> {
+      LOG.info("Creating CQL session for database URI: {}", databaseUri);
+      return super.buildAsync();
+    });
   }
 
   private void checkAdapterSettings() throws UnknownHostException {
@@ -254,6 +255,16 @@ public final class SpannerCqlSessionBuilder
   }
 
   private void checkContactPoints() throws UnknownHostException {
+    // Restore original user contact-point state if a previous build registered an adapter
+    // endpoint on this builder instance, ensuring each build gets a fresh ephemeral port.
+    if (registeredAdapterEndPoint != null) {
+      programmaticContactPoints.remove(registeredAdapterEndPoint);
+      if (userContactPoint != null) {
+        programmaticContactPoints.add(userContactPoint);
+      }
+      registeredAdapterEndPoint = null;
+    }
+
     if (programmaticContactPoints.size() > 1) {
       throw new IllegalArgumentException(
           "At most one contact point can be provided when using SpannerCqlSessionBuilder, as it"
@@ -261,12 +272,11 @@ public final class SpannerCqlSessionBuilder
     }
 
     if (programmaticContactPoints.isEmpty()) {
-      iNetAddress = InetAddress.getByName(DEFAULT_HOST);
+      userContactPoint = null;
+      iNetAddress = InetAddress.getLoopbackAddress();
       port = DEFAULT_PORT;
       LOG.info(
-          "No contact point provided. Defaulting to connect adapter via {}:{}",
-          DEFAULT_HOST,
-          DEFAULT_PORT);
+          "No contact point provided. Defaulting to connect adapter via {}:{}", iNetAddress, port);
       return;
     }
 
@@ -277,6 +287,13 @@ public final class SpannerCqlSessionBuilder
     if (address instanceof InetSocketAddress) {
       InetSocketAddress inetSocketAddress = (InetSocketAddress) address;
       iNetAddress = inetSocketAddress.getAddress();
+      if (iNetAddress == null || !iNetAddress.isLoopbackAddress()) {
+        throw new IllegalArgumentException(
+            "Contact point for in-process SpannerCqlSessionBuilder must be a resolved loopback"
+                + " address, but got: "
+                + inetSocketAddress);
+      }
+      userContactPoint = providedEndPoint;
       port = inetSocketAddress.getPort();
       LOG.debug("Using user-provided localhost contact point: {}", inetSocketAddress);
     } else {
@@ -335,5 +352,9 @@ public final class SpannerCqlSessionBuilder
             .build();
     adapter = new Adapter(adapterOptions);
     adapter.start();
+    int boundPort = adapter.getBoundPort();
+    registeredAdapterEndPoint = new DefaultEndPoint(new InetSocketAddress(iNetAddress, boundPort));
+    programmaticContactPoints.clear();
+    programmaticContactPoints.add(registeredAdapterEndPoint);
   }
 }
