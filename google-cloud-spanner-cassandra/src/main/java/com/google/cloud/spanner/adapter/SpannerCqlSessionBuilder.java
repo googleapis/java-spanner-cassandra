@@ -227,10 +227,11 @@ public final class SpannerCqlSessionBuilder
         CompletableFuture.runAsync(this::createAndStartAdapter);
 
     // After the Adapter starts, build the CQL session.
-    return adapterStartFuture.thenCompose(v -> {
-      LOG.info("Creating CQL session for database URI: {}", databaseUri);
-      return super.buildAsync();
-    });
+    return adapterStartFuture.thenCompose(
+        v -> {
+          LOG.info("Creating CQL session for database URI: {}", databaseUri);
+          return super.buildAsync();
+        });
   }
 
   private void checkAdapterSettings() throws UnknownHostException {
