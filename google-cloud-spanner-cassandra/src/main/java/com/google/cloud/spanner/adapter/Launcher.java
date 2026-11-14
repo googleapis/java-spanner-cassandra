@@ -185,10 +185,11 @@ public class Launcher {
     // Register the single shutdown hook after all adapters are configured and started.
     Runtime.getRuntime()
         .addShutdownHook(
-            new Thread(() -> {
-              LOG.info("Shutdown hook triggered. Stopping all adapters.");
-              shutdown();
-            }));
+            new Thread(
+                () -> {
+                  LOG.info("Shutdown hook triggered. Stopping all adapters.");
+                  shutdown();
+                }));
   }
 
   /**
@@ -200,13 +201,14 @@ public class Launcher {
     if (healthCheckServer != null) {
       healthCheckServer.stop();
     }
-    adapters.forEach(adapter -> {
-      try {
-        adapter.stop();
-      } catch (IOException e) {
-        LOG.warn("Error while stopping Adapter: " + e.getMessage());
-      }
-    });
+    adapters.forEach(
+        adapter -> {
+          try {
+            adapter.stop();
+          } catch (IOException e) {
+            LOG.warn("Error while stopping Adapter: " + e.getMessage());
+          }
+        });
   }
 
   private void startHealthCheckServer(HealthCheckConfig config) throws IOException {

@@ -121,16 +121,17 @@ final class Adapter {
                 .keyManager(
                     new File(options.getClientCertPath()), new File(options.getClientKeyPath()))
                 .build();
-        channelProviderBuilder.setChannelConfigurator(channelBuilder -> {
-          if (channelBuilder instanceof NettyChannelBuilder) {
-            ((NettyChannelBuilder) channelBuilder).sslContext(mTLSContext);
-          } else {
-            throw new IllegalStateException(
-                "mTLS requires NettyChannelBuilder, but got "
-                    + channelBuilder.getClass().getName());
-          }
-          return channelBuilder;
-        });
+        channelProviderBuilder.setChannelConfigurator(
+            channelBuilder -> {
+              if (channelBuilder instanceof NettyChannelBuilder) {
+                ((NettyChannelBuilder) channelBuilder).sslContext(mTLSContext);
+              } else {
+                throw new IllegalStateException(
+                    "mTLS requires NettyChannelBuilder, but got "
+                        + channelBuilder.getClass().getName());
+              }
+              return channelBuilder;
+            });
       }
 
       channelProviderBuilder
