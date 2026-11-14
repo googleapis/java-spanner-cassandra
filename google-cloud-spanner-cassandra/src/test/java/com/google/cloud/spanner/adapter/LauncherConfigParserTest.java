@@ -284,4 +284,33 @@ public class LauncherConfigParserTest {
     assertThat(listenerConfig2.getClientCertPath()).isEqualTo("/path/to/client.crt");
     assertThat(listenerConfig2.getClientKeyPath()).isEqualTo("/path/to/client.key.pkcs8");
   }
+
+  @Test
+  public void testDefaultHost_isLoopback() throws Exception {
+    Map<String, String> properties = new HashMap<>();
+    properties.put("databaseUri", DEFAULT_DATABASE_URI);
+    properties.put("healthCheckPort", "8080");
+
+    LauncherConfig fromProps = LauncherConfig.fromProperties(properties);
+    assertThat(fromProps.getListeners()).hasSize(1);
+    assertThat(fromProps.getListeners().get(0).getHostAddress())
+        .isEqualTo(InetAddress.getByName("127.0.0.1"));
+    assertThat(fromProps.getHealthCheckConfig()).isNotNull();
+    assertThat(fromProps.getHealthCheckConfig().getHostAddress())
+        .isEqualTo(InetAddress.getByName("127.0.0.1"));
+
+    UserConfigs userConfigs =
+        new UserConfigs(
+            null,
+            Collections.singletonList(
+                new ListenerConfigs(
+                    "listener_default_host",
+                    null,
+                    9042,
+                    new SpannerConfigs(DEFAULT_DATABASE_URI, 4, null))));
+    LauncherConfig fromYaml = LauncherConfig.fromUserConfigs(userConfigs);
+    assertThat(fromYaml.getListeners()).hasSize(1);
+    assertThat(fromYaml.getListeners().get(0).getHostAddress())
+        .isEqualTo(InetAddress.getByName("127.0.0.1"));
+  }
 }

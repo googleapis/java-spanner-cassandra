@@ -62,7 +62,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>{@code databaseUri}: (Required) The URI of the target Spanner database.
  *   <li>{@code host}: (Optional) The hostname or IP address to bind the service to. Defaults to
- *       "0.0.0.0".
+ *       "127.0.0.1".
  *   <li>{@code port}: (Optional) The port number to bind the service to. Defaults to 9042.
  *   <li>{@code numGrpcChannels}: (Optional) The number of gRPC channels to use for communication
  *       with Spanner. Defaults to 4.
@@ -185,11 +185,10 @@ public class Launcher {
     // Register the single shutdown hook after all adapters are configured and started.
     Runtime.getRuntime()
         .addShutdownHook(
-            new Thread(
-                () -> {
-                  LOG.info("Shutdown hook triggered. Stopping all adapters.");
-                  shutdown();
-                }));
+            new Thread(() -> {
+              LOG.info("Shutdown hook triggered. Stopping all adapters.");
+              shutdown();
+            }));
   }
 
   /**
@@ -201,17 +200,17 @@ public class Launcher {
     if (healthCheckServer != null) {
       healthCheckServer.stop();
     }
-    adapters.forEach(
-        adapter -> {
-          try {
-            adapter.stop();
-          } catch (IOException e) {
-            LOG.warn("Error while stopping Adapter: " + e.getMessage());
-          }
-        });
+    adapters.forEach(adapter -> {
+      try {
+        adapter.stop();
+      } catch (IOException e) {
+        LOG.warn("Error while stopping Adapter: " + e.getMessage());
+      }
+    });
   }
 
   private void startHealthCheckServer(HealthCheckConfig config) throws IOException {
+    warnIfNonLoopback(config.getHostAddress(), "health check server");
     healthCheckServer =
         adapterFactory.createHealthCheckServer(config.getHostAddress(), config.getPort());
     healthCheckServer.start();
@@ -264,6 +263,7 @@ public class Launcher {
   }
 
   private void startAdapter(ListenerConfig config) throws IOException {
+    warnIfNonLoopback(config.getHostAddress(), "listener");
     LOG.info(
         "Starting Adapter for Spanner database {} on {}:{} with {} gRPC channels, max commit"
             + " delay of {} and built-in metrics enabled: {}",
@@ -282,5 +282,17 @@ public class Launcher {
     final Adapter adapter = adapterFactory.createAdapter(options);
     adapters.add(adapter);
     adapter.start();
+  }
+
+  static boolean warnIfNonLoopback(InetAddress address, String component) {
+    if (address != null && !address.isLoopbackAddress()) {
+      LOG.warn(
+          "Binding {} to non-loopback address {} exposes the unauthenticated adapter over the"
+              + " network. Prefer 127.0.0.1 unless remote access is secured by network controls.",
+          component,
+          address);
+      return true;
+    }
+    return false;
   }
 }

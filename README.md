@@ -175,7 +175,7 @@ For non-Java applications or tools like `cqlsh`, you can run the Spanner Cassand
     **Configuration Notes:**
 
     * **Database URI**: You must specify the Spanner database URI. This is done via the `databaseUri` property in YAML or the `-DdatabaseUri` system property.
-    * **Host**: The default host is `0.0.0.0`. This can be overridden with the `host` property in YAML or `-Dhost`.
+    * **Host**: The default host is `127.0.0.1`. This can be overridden with the `host` property in YAML or `-Dhost`.
     * **Port**: The default port is `9042`. This can be overridden with the `port` property in YAML or `-Dport`.
     * **gRPC Channels**: The default number of gRPC channels is `4`. This can be overridden with `numGrpcChannels` in YAML or `-DnumGrpcChannels`.
     * **Health Check**: You can optionally enable a health check endpoint.

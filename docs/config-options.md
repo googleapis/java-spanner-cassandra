@@ -17,7 +17,7 @@ globalClientConfigs:
 listeners:
     # The name of the listener. It is recommended to use a meaningful name, such as the cluster name.
   - name: "listener_1"
-    # [Optional] The host to bind the listener to. Defaults to "0.0.0.0".
+    # [Optional] The host to bind the listener to. Defaults to "127.0.0.1".
     host: "127.0.0.1"
     # [Optional] The port to bind the listener to. Defaults to 9042.
     port: 9042
