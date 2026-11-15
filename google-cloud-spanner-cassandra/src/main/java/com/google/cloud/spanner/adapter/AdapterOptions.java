@@ -33,7 +33,7 @@ class AdapterOptions {
   static class Builder {
     String spannerEndpoint = DEFAULT_SPANNER_ENDPOINT;
     int tcpPort;
-    InetAddress inetAddress;
+    InetAddress inetAddress = InetAddress.getLoopbackAddress();
     String databaseUri;
     int numGrpcChannels = DEFAULT_NUM_GRPC_CHANNELS;
     Optional<Duration> maxCommitDelay = Optional.empty();
