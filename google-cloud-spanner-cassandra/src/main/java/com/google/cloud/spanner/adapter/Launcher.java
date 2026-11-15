@@ -287,10 +287,11 @@ public class Launcher {
   }
 
   static boolean warnIfNonLoopback(InetAddress address, String component) {
-    if (address != null && !address.isLoopbackAddress()) {
+    if (address == null || !address.isLoopbackAddress()) {
       LOG.warn(
           "Binding {} to non-loopback address {} exposes the unauthenticated adapter over the"
-              + " network. Prefer 127.0.0.1 unless remote access is secured by network controls.",
+              + " network. Prefer 127.0.0.1 or ::1 unless remote access is secured by network"
+              + " controls.",
           component,
           address);
       return true;

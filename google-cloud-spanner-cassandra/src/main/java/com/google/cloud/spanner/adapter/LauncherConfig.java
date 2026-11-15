@@ -21,6 +21,7 @@ import com.google.cloud.spanner.adapter.configs.ConfigConstants;
 import com.google.cloud.spanner.adapter.configs.ListenerConfigs;
 import com.google.cloud.spanner.adapter.configs.UserConfigs;
 import com.google.common.base.Strings;
+import com.google.common.net.HostAndPort;
 import com.google.spanner.adapter.v1.DatabaseName;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -398,14 +399,21 @@ final class HealthCheckConfig {
   }
 
   static HealthCheckConfig fromEndpointString(String endpoint) throws UnknownHostException {
-    String[] parts = endpoint.split(":");
-    if (parts.length != 2) {
+    final HostAndPort hostAndPort;
+    try {
+      hostAndPort = HostAndPort.fromString(endpoint);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "Invalid health check endpoint format '" + endpoint + "'. Expected 'host:port'.", e);
+    }
+    if (!hostAndPort.hasPort() || Strings.isNullOrEmpty(hostAndPort.getHost())) {
       throw new IllegalArgumentException(
           "Invalid health check endpoint format '" + endpoint + "'. Expected 'host:port'.");
     }
-    String host = parts[0];
-    int port = parsePort(parts[1]);
-    return newBuilder().hostAddress(InetAddress.getByName(host)).port(port).build();
+    return newBuilder()
+        .hostAddress(InetAddress.getByName(hostAndPort.getHost()))
+        .port(hostAndPort.getPort())
+        .build();
   }
 
   @Nullable
