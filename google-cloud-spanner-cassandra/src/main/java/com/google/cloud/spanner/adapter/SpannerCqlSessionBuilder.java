@@ -18,6 +18,7 @@ package com.google.cloud.spanner.adapter;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
+import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.session.SessionBuilder;
 import com.datastax.oss.driver.internal.core.metadata.DefaultEndPoint;
@@ -25,6 +26,7 @@ import com.google.api.gax.rpc.TransportChannelProvider;
 import com.google.auth.Credentials;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.net.HostAndPort;
 import com.google.spanner.adapter.v1.DatabaseName;
@@ -74,8 +76,12 @@ public final class SpannerCqlSessionBuilder
 
   private InetAddress iNetAddress;
   private int port;
+  // registeredAdapterEndPoint is builder-owned: it replaces userContactPoint in
+  // programmaticContactPoints only between createAndStartAdapter() and the next
+  // checkContactPoints().
   private EndPoint userContactPoint;
   private EndPoint registeredAdapterEndPoint;
+  private boolean configContactPointProvided;
   private Adapter adapter;
   private int numGrpcChannels = DEFAULT_NUM_GRPC_CHANNELS;
   private String databaseUri = null;
@@ -264,7 +270,9 @@ public final class SpannerCqlSessionBuilder
     }
   }
 
+  @VisibleForTesting
   void checkContactPoints() throws UnknownHostException {
+    configContactPointProvided = false;
     // Restore original user contact-point state if a previous build registered an adapter
     // endpoint on this builder instance, ensuring each build gets a fresh ephemeral port.
     if (registeredAdapterEndPoint != null) {
@@ -276,16 +284,19 @@ public final class SpannerCqlSessionBuilder
     }
 
     List<String> configContactPoints = null;
-    if (configLoader != null
-        && configLoader
-            .getInitialConfig()
-            .getDefaultProfile()
-            .isDefined(DefaultDriverOption.CONTACT_POINTS)) {
-      configContactPoints =
-          configLoader
+    try (DriverConfigLoader defaultLoader = configLoader == null ? defaultConfigLoader() : null) {
+      DriverConfigLoader effectiveLoader = configLoader != null ? configLoader : defaultLoader;
+      if (effectiveLoader != null
+          && effectiveLoader
               .getInitialConfig()
               .getDefaultProfile()
-              .getStringList(DefaultDriverOption.CONTACT_POINTS);
+              .isDefined(DefaultDriverOption.CONTACT_POINTS)) {
+        configContactPoints =
+            effectiveLoader
+                .getInitialConfig()
+                .getDefaultProfile()
+                .getStringList(DefaultDriverOption.CONTACT_POINTS);
+      }
     }
 
     int configCount = configContactPoints != null ? configContactPoints.size() : 0;
@@ -297,23 +308,43 @@ public final class SpannerCqlSessionBuilder
 
     if (configCount == 1) {
       HostAndPort parsed = HostAndPort.fromString(configContactPoints.get(0));
-      if (!parsed.hasPort() || Strings.isNullOrEmpty(parsed.getHost())) {
+      if (!parsed.hasPort() || parsed.getPort() <= 0 || Strings.isNullOrEmpty(parsed.getHost())) {
         throw new IllegalArgumentException(
-            "Contact point in DriverConfigLoader must specify host:port, but got: "
+            "Contact point in DriverConfigLoader must specify host and a non-zero port, but got: "
                 + configContactPoints.get(0));
       }
-      InetSocketAddress inetSocketAddress =
-          new InetSocketAddress(parsed.getHost(), parsed.getPort());
-      iNetAddress = inetSocketAddress.getAddress();
-      if (iNetAddress == null || !iNetAddress.isLoopbackAddress()) {
+      final InetAddress[] resolvedAddresses;
+      try {
+        resolvedAddresses = InetAddress.getAllByName(parsed.getHost());
+      } catch (UnknownHostException e) {
         throw new IllegalArgumentException(
             "Contact point for in-process SpannerCqlSessionBuilder must be a resolved loopback"
-                + " address, but got: "
-                + inetSocketAddress);
+                + " address, but could not resolve: "
+                + configContactPoints.get(0),
+            e);
       }
+      for (InetAddress addr : resolvedAddresses) {
+        if (addr == null || !addr.isLoopbackAddress()) {
+          throw new IllegalArgumentException(
+              "Contact point for in-process SpannerCqlSessionBuilder must be a resolved loopback"
+                  + " address, but got: "
+                  + addr);
+        }
+      }
+      if (resolvedAddresses.length != 1) {
+        throw new IllegalArgumentException(
+            "At most one contact point address can be provided when using"
+                + " SpannerCqlSessionBuilder, but '"
+                + configContactPoints.get(0)
+                + "' resolved to "
+                + resolvedAddresses.length
+                + " addresses.");
+      }
+      iNetAddress = resolvedAddresses[0];
       userContactPoint = null;
-      port = inetSocketAddress.getPort();
-      LOG.debug("Using config-provided localhost contact point: {}", inetSocketAddress);
+      configContactPointProvided = true;
+      port = parsed.getPort();
+      LOG.debug("Using config-provided localhost contact point: {}:{}", iNetAddress, port);
       return;
     }
 
@@ -367,6 +398,7 @@ public final class SpannerCqlSessionBuilder
     }
   }
 
+  @VisibleForTesting
   void createAndStartAdapter() {
 
     if (instanceType == InstanceType.OMNI && !DatabaseName.isParsableFrom(databaseUri)) {
@@ -402,7 +434,7 @@ public final class SpannerCqlSessionBuilder
     adapter = new Adapter(adapterOptions);
     adapter.start();
     int boundPort = adapter.getBoundPort();
-    if (programmaticContactPoints.isEmpty() || port == 0) {
+    if (!configContactPointProvided && (programmaticContactPoints.isEmpty() || port == 0)) {
       registeredAdapterEndPoint =
           new DefaultEndPoint(new InetSocketAddress(iNetAddress, boundPort));
       programmaticContactPoints.clear();
@@ -410,23 +442,38 @@ public final class SpannerCqlSessionBuilder
     }
   }
 
+  @VisibleForTesting
   InetAddress getAdapterInetAddress() {
     return iNetAddress;
   }
 
+  @VisibleForTesting
   int getAdapterPort() {
     return port;
   }
 
+  @VisibleForTesting
   Adapter getAdapter() {
     return adapter;
   }
 
+  @VisibleForTesting
   Set<EndPoint> getProgrammaticContactPoints() {
     return programmaticContactPoints;
   }
 
+  @VisibleForTesting
   EndPoint getUserContactPoint() {
     return userContactPoint;
+  }
+
+  @VisibleForTesting
+  String getHost() {
+    return host;
+  }
+
+  @VisibleForTesting
+  InstanceType getInstanceType() {
+    return instanceType;
   }
 }

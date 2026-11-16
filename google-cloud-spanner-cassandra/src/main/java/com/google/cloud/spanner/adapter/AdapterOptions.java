@@ -22,6 +22,7 @@ import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
 import com.google.common.base.Strings;
 import java.net.InetAddress;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 
 /** Options for creating the {@link Adapter}. */
@@ -60,7 +61,7 @@ class AdapterOptions {
 
     /** The specific local {@link InetAddress} for the server socket to bind to. */
     Builder inetAddress(InetAddress inetAddress) {
-      this.inetAddress = inetAddress;
+      this.inetAddress = Objects.requireNonNull(inetAddress, "inetAddress cannot be null");
       return this;
     }
 

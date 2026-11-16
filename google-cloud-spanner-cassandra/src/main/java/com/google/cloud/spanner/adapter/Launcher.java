@@ -286,6 +286,11 @@ public class Launcher {
     adapter.start();
   }
 
+  /**
+   * Logs a WARN when {@code address} is {@code null} (wildcard) or non-loopback.
+   *
+   * @return {@code true} if a warning was logged.
+   */
   static boolean warnIfNonLoopback(InetAddress address, String component) {
     if (address == null || !address.isLoopbackAddress()) {
       LOG.warn(
