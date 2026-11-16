@@ -215,6 +215,12 @@ final class Adapter {
     LOG.info("Adapter stopped.");
   }
 
+  /**
+   * Returns the local port the server socket is bound to (the OS-assigned port when {@code tcpPort}
+   * is {@code 0}).
+   *
+   * @throws IllegalStateException if the adapter has not been started.
+   */
   int getBoundPort() {
     Preconditions.checkState(started && serverSocket != null, "Adapter was never started!");
     return serverSocket.getLocalPort();

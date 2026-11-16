@@ -17,24 +17,30 @@ limitations under the License.
 package com.google.cloud.spanner.adapter;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
+import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
+import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
-import com.datastax.oss.driver.api.core.session.SessionBuilder;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
 import com.google.spanner.adapter.v1.Session;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import com.typesafe.config.ConfigFactory;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.SocketAddress;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
@@ -51,54 +57,32 @@ public class SpannerCqlSessionBuilderTest {
       "projects/test-project/instances/test-instance/databases/test-db";
 
   @Test
-  public void testSetExperimentalHostEndpoint_deprecatedButWorks() throws Exception {
+  public void testSetExperimentalHostEndpoint_deprecatedButWorks() {
     SpannerCqlSessionBuilder builder = new SpannerCqlSessionBuilder();
     builder.setExperimentalHostEndpoint("experimental-host:15000");
 
-    Field hostField = SpannerCqlSessionBuilder.class.getDeclaredField("host");
-    hostField.setAccessible(true);
-    String host = (String) hostField.get(builder);
-    assertThat(host).isEqualTo("experimental-host:15000");
-
-    Field instanceTypeField = SpannerCqlSessionBuilder.class.getDeclaredField("instanceType");
-    instanceTypeField.setAccessible(true);
-    InstanceType instanceType = (InstanceType) instanceTypeField.get(builder);
-    assertThat(instanceType).isEqualTo(InstanceType.OMNI);
+    assertThat(builder.getHost()).isEqualTo("experimental-host:15000");
+    assertThat(builder.getInstanceType()).isEqualTo(InstanceType.OMNI);
   }
 
   @Test
-  public void testSetHostAndType_newWay() throws Exception {
+  public void testSetHostAndType_newWay() {
     SpannerCqlSessionBuilder builder = new SpannerCqlSessionBuilder();
     builder.setHost("omni-host:15000");
     builder.setInstanceType(InstanceType.OMNI);
 
-    Field hostField = SpannerCqlSessionBuilder.class.getDeclaredField("host");
-    hostField.setAccessible(true);
-    String host = (String) hostField.get(builder);
-    assertThat(host).isEqualTo("omni-host:15000");
-
-    Field instanceTypeField = SpannerCqlSessionBuilder.class.getDeclaredField("instanceType");
-    instanceTypeField.setAccessible(true);
-    InstanceType instanceType = (InstanceType) instanceTypeField.get(builder);
-    assertThat(instanceType).isEqualTo(InstanceType.OMNI);
+    assertThat(builder.getHost()).isEqualTo("omni-host:15000");
+    assertThat(builder.getInstanceType()).isEqualTo(InstanceType.OMNI);
   }
 
   @Test
   public void testDefaultContactPoint_usesLoopbackAndEphemeralPort() throws Exception {
     SpannerCqlSessionBuilder builder = new SpannerCqlSessionBuilder();
 
-    Method checkContactPoints =
-        SpannerCqlSessionBuilder.class.getDeclaredMethod("checkContactPoints");
-    checkContactPoints.setAccessible(true);
-    checkContactPoints.invoke(builder);
+    builder.checkContactPoints();
 
-    Field inetAddressField = SpannerCqlSessionBuilder.class.getDeclaredField("iNetAddress");
-    inetAddressField.setAccessible(true);
-    InetAddress inetAddress = (InetAddress) inetAddressField.get(builder);
-
-    Field portField = SpannerCqlSessionBuilder.class.getDeclaredField("port");
-    portField.setAccessible(true);
-    int port = (int) portField.get(builder);
+    InetAddress inetAddress = builder.getAdapterInetAddress();
+    int port = builder.getAdapterPort();
 
     assertThat(inetAddress).isEqualTo(InetAddress.getLoopbackAddress());
     assertThat(inetAddress.isLoopbackAddress()).isTrue();
@@ -113,29 +97,18 @@ public class SpannerCqlSessionBuilderTest {
             new InetSocketAddress("localhost", 0),
             new InetSocketAddress("::1", 0));
 
-    Method checkContactPoints =
-        SpannerCqlSessionBuilder.class.getDeclaredMethod("checkContactPoints");
-    checkContactPoints.setAccessible(true);
-    Field inetAddressField = SpannerCqlSessionBuilder.class.getDeclaredField("iNetAddress");
-    inetAddressField.setAccessible(true);
-    Field portField = SpannerCqlSessionBuilder.class.getDeclaredField("port");
-    portField.setAccessible(true);
-    Field userContactPointField =
-        SpannerCqlSessionBuilder.class.getDeclaredField("userContactPoint");
-    userContactPointField.setAccessible(true);
-
     for (InetSocketAddress contactPoint : loopbackAddresses) {
       SpannerCqlSessionBuilder builder = new SpannerCqlSessionBuilder();
       builder.addContactPoint(contactPoint);
 
-      checkContactPoints.invoke(builder);
+      builder.checkContactPoints();
 
-      InetAddress resolved = (InetAddress) inetAddressField.get(builder);
-      int port = (int) portField.get(builder);
+      InetAddress resolved = builder.getAdapterInetAddress();
+      int port = builder.getAdapterPort();
       assertThat(resolved).isNotNull();
       assertThat(resolved.isLoopbackAddress()).isTrue();
       assertThat(port).isEqualTo(contactPoint.getPort());
-      assertThat(userContactPointField.get(builder)).isNotNull();
+      assertThat(builder.getUserContactPoint()).isNotNull();
     }
   }
 
@@ -144,6 +117,7 @@ public class SpannerCqlSessionBuilderTest {
     List<InetSocketAddress> invalidAddresses =
         Arrays.asList(
             new InetSocketAddress("0.0.0.0", 9042),
+            new InetSocketAddress("::", 9042),
             new InetSocketAddress("192.168.1.1", 9042),
             InetSocketAddress.createUnresolved("example.com", 9042));
 
@@ -168,24 +142,12 @@ public class SpannerCqlSessionBuilderTest {
   }
 
   @Test
-  @SuppressWarnings("unchecked")
   public void testCreateAndStartAdapter_registersBoundPortInContactPoints() throws Exception {
     SpannerCqlSessionBuilder builder =
         new SpannerCqlSessionBuilder()
             .setDatabaseUri(TEST_DATABASE_URI)
             .setHost("localhost:15000")
             .setUsePlainText(true);
-
-    Method checkContactPoints =
-        SpannerCqlSessionBuilder.class.getDeclaredMethod("checkContactPoints");
-    checkContactPoints.setAccessible(true);
-    Method createAndStartAdapter =
-        SpannerCqlSessionBuilder.class.getDeclaredMethod("createAndStartAdapter");
-    createAndStartAdapter.setAccessible(true);
-    Field adapterField = SpannerCqlSessionBuilder.class.getDeclaredField("adapter");
-    adapterField.setAccessible(true);
-    Field contactPointsField = SessionBuilder.class.getDeclaredField("programmaticContactPoints");
-    contactPointsField.setAccessible(true);
 
     Adapter startedAdapter = null;
     try (MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class);
@@ -199,16 +161,16 @@ public class SpannerCqlSessionBuilderTest {
           .thenReturn(mockAdapterClient);
       when(mockAdapterClient.createSession(any())).thenReturn(mockSession);
 
-      checkContactPoints.invoke(builder);
-      createAndStartAdapter.invoke(builder);
+      builder.checkContactPoints();
+      builder.createAndStartAdapter();
 
-      startedAdapter = (Adapter) adapterField.get(builder);
+      startedAdapter = builder.getAdapter();
       assertThat(startedAdapter).isNotNull();
       int boundPort = startedAdapter.getBoundPort();
       assertThat(boundPort).isGreaterThan(0);
       assertThat(boundPort).isNotEqualTo(9042);
 
-      Set<EndPoint> contactPoints = (Set<EndPoint>) contactPointsField.get(builder);
+      Set<EndPoint> contactPoints = builder.getProgrammaticContactPoints();
       assertThat(contactPoints).hasSize(1);
       InetSocketAddress resolved = (InetSocketAddress) contactPoints.iterator().next().resolve();
       assertThat(resolved.getAddress()).isEqualTo(InetAddress.getLoopbackAddress());
@@ -221,24 +183,12 @@ public class SpannerCqlSessionBuilderTest {
   }
 
   @Test
-  @SuppressWarnings("unchecked")
   public void testBuilderReuse_bindsDistinctEphemeralPorts() throws Exception {
     SpannerCqlSessionBuilder builder =
         new SpannerCqlSessionBuilder()
             .setDatabaseUri(TEST_DATABASE_URI)
             .setHost("localhost:15000")
             .setUsePlainText(true);
-
-    Method checkContactPoints =
-        SpannerCqlSessionBuilder.class.getDeclaredMethod("checkContactPoints");
-    checkContactPoints.setAccessible(true);
-    Method createAndStartAdapter =
-        SpannerCqlSessionBuilder.class.getDeclaredMethod("createAndStartAdapter");
-    createAndStartAdapter.setAccessible(true);
-    Field adapterField = SpannerCqlSessionBuilder.class.getDeclaredField("adapter");
-    adapterField.setAccessible(true);
-    Field contactPointsField = SessionBuilder.class.getDeclaredField("programmaticContactPoints");
-    contactPointsField.setAccessible(true);
 
     Adapter firstAdapter = null;
     Adapter secondAdapter = null;
@@ -253,20 +203,20 @@ public class SpannerCqlSessionBuilderTest {
           .thenReturn(mockAdapterClient);
       when(mockAdapterClient.createSession(any())).thenReturn(mockSession);
 
-      checkContactPoints.invoke(builder);
-      createAndStartAdapter.invoke(builder);
-      firstAdapter = (Adapter) adapterField.get(builder);
+      builder.checkContactPoints();
+      builder.createAndStartAdapter();
+      firstAdapter = builder.getAdapter();
       int firstPort = firstAdapter.getBoundPort();
       assertThat(firstPort).isGreaterThan(0);
 
-      checkContactPoints.invoke(builder);
-      createAndStartAdapter.invoke(builder);
-      secondAdapter = (Adapter) adapterField.get(builder);
+      builder.checkContactPoints();
+      builder.createAndStartAdapter();
+      secondAdapter = builder.getAdapter();
       int secondPort = secondAdapter.getBoundPort();
       assertThat(secondPort).isGreaterThan(0);
       assertThat(secondPort).isNotEqualTo(firstPort);
 
-      Set<EndPoint> contactPoints = (Set<EndPoint>) contactPointsField.get(builder);
+      Set<EndPoint> contactPoints = builder.getProgrammaticContactPoints();
       assertThat(contactPoints).hasSize(1);
       InetSocketAddress resolved = (InetSocketAddress) contactPoints.iterator().next().resolve();
       assertThat(resolved.getPort()).isEqualTo(secondPort);
@@ -276,6 +226,299 @@ public class SpannerCqlSessionBuilderTest {
       }
       if (secondAdapter != null && secondAdapter != firstAdapter) {
         secondAdapter.stop();
+      }
+    }
+  }
+
+  @Test
+  public void testConfigLoaderContactPoint_nonLoopbackThrowsIllegalArgumentException() {
+    DriverConfigLoader configLoader =
+        DriverConfigLoader.programmaticBuilder()
+            .withStringList(
+                DefaultDriverOption.CONTACT_POINTS, Collections.singletonList("10.0.0.1:9042"))
+            .build();
+    SpannerCqlSessionBuilder builder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .withConfigLoader(configLoader);
+
+    IllegalArgumentException exception =
+        assertThrows(IllegalArgumentException.class, builder::checkContactPoints);
+    assertTrue(exception.getMessage().contains("loopback address"));
+  }
+
+  @Test
+  public void testConfigLoaderContactPoint_multipleContactPointsThrowsIllegalArgumentException() {
+    DriverConfigLoader configLoader =
+        DriverConfigLoader.programmaticBuilder()
+            .withStringList(
+                DefaultDriverOption.CONTACT_POINTS,
+                Arrays.asList("127.0.0.1:9042", "127.0.0.1:9043"))
+            .build();
+    SpannerCqlSessionBuilder builder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .withConfigLoader(configLoader);
+
+    assertThrows(IllegalArgumentException.class, builder::checkContactPoints);
+  }
+
+  @Test
+  public void testConfigLoaderContactPoint_validLoopbackAccepted() throws Exception {
+    DriverConfigLoader configLoader =
+        DriverConfigLoader.programmaticBuilder()
+            .withStringList(
+                DefaultDriverOption.CONTACT_POINTS, Collections.singletonList("127.0.0.1:9042"))
+            .build();
+    SpannerCqlSessionBuilder builder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .withConfigLoader(configLoader);
+
+    builder.checkContactPoints();
+
+    assertEquals(InetAddress.getByName("127.0.0.1"), builder.getAdapterInetAddress());
+    assertEquals(9042, builder.getAdapterPort());
+  }
+
+  @Test
+  public void testConfigLoaderContactPoint_multipleResolvedAddressesThrowsIllegalArgumentException()
+      throws Exception {
+    InetAddress ipv4Loopback = InetAddress.getByName("127.0.0.1");
+    InetAddress ipv6Loopback = InetAddress.getByName("::1");
+    InetAddress nonLoopback = InetAddress.getByName("10.0.0.1");
+
+    DriverConfigLoader configLoader =
+        DriverConfigLoader.programmaticBuilder()
+            .withStringList(
+                DefaultDriverOption.CONTACT_POINTS, Collections.singletonList("multi-host:9042"))
+            .build();
+    SpannerCqlSessionBuilder builder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .withConfigLoader(configLoader);
+
+    try (MockedStatic<InetAddress> mockedInetAddress = mockStatic(InetAddress.class)) {
+      mockedInetAddress
+          .when(() -> InetAddress.getAllByName("multi-host"))
+          .thenReturn(new InetAddress[] {ipv4Loopback, ipv6Loopback});
+      assertThrows(IllegalArgumentException.class, builder::checkContactPoints);
+
+      mockedInetAddress
+          .when(() -> InetAddress.getAllByName("multi-host"))
+          .thenReturn(new InetAddress[] {ipv4Loopback, nonLoopback});
+      assertThrows(IllegalArgumentException.class, builder::checkContactPoints);
+    }
+  }
+
+  @Test
+  public void testConfigLoaderContactPoint_portZeroThrowsIllegalArgumentException() {
+    DriverConfigLoader configLoader =
+        DriverConfigLoader.programmaticBuilder()
+            .withStringList(
+                DefaultDriverOption.CONTACT_POINTS, Collections.singletonList("127.0.0.1:0"))
+            .build();
+
+    try (MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class)) {
+      mockedStaticAdapterClient
+          .when(() -> AdapterClient.create(any(AdapterSettings.class)))
+          .thenThrow(new IllegalStateException("Adapter must not start for port 0 in config"));
+
+      SpannerCqlSessionBuilder builder =
+          new SpannerCqlSessionBuilder()
+              .setDatabaseUri(TEST_DATABASE_URI)
+              .setUsePlainText(true)
+              .withConfigLoader(configLoader);
+
+      CompletionStage<SpannerCqlSession> stage = builder.buildAsync();
+      ExecutionException thrown =
+          assertThrows(ExecutionException.class, () -> stage.toCompletableFuture().get());
+      assertEquals(IllegalArgumentException.class, thrown.getCause().getClass());
+    }
+  }
+
+  @Test
+  public void testDefaultConfigLoaderContactPoint_nonLoopbackThrowsIllegalArgumentException() {
+    String propertyKey = "datastax-java-driver.basic.contact-points.0";
+    String previousValue = System.getProperty(propertyKey);
+    System.setProperty(propertyKey, "192.168.1.1:9042");
+    try (MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class)) {
+      mockedStaticAdapterClient
+          .when(() -> AdapterClient.create(any(AdapterSettings.class)))
+          .thenThrow(new IllegalStateException("Adapter must not start for invalid contact point"));
+
+      SpannerCqlSessionBuilder builder =
+          new SpannerCqlSessionBuilder().setDatabaseUri(TEST_DATABASE_URI).setUsePlainText(true);
+
+      CompletionStage<SpannerCqlSession> stage = builder.buildAsync();
+      ExecutionException thrown =
+          assertThrows(ExecutionException.class, () -> stage.toCompletableFuture().get());
+      assertEquals(IllegalArgumentException.class, thrown.getCause().getClass());
+    } finally {
+      if (previousValue == null) {
+        System.clearProperty(propertyKey);
+      } else {
+        System.setProperty(propertyKey, previousValue);
+      }
+      ConfigFactory.invalidateCaches();
+    }
+  }
+
+  @Test
+  public void testConfigLoaderContactPoint_notDuplicatedIntoProgrammaticContactPoints()
+      throws Exception {
+    int freePort;
+    try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+      freePort = socket.getLocalPort();
+    }
+    DriverConfigLoader configLoader =
+        DriverConfigLoader.programmaticBuilder()
+            .withStringList(
+                DefaultDriverOption.CONTACT_POINTS,
+                Collections.singletonList("127.0.0.1:" + freePort))
+            .build();
+    SpannerCqlSessionBuilder builder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .setHost("localhost:15000")
+            .setUsePlainText(true)
+            .withConfigLoader(configLoader);
+
+    Adapter adapter = null;
+    try (MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class);
+        MockedStatic<GoogleCredentials> mockedGoogleCredentials =
+            mockStatic(GoogleCredentials.class)) {
+      AdapterClient mockAdapterClient = mock(AdapterClient.class);
+      Session mockSession = mock(Session.class);
+      mockedGoogleCredentials.when(GoogleCredentials::getApplicationDefault).thenReturn(null);
+      mockedStaticAdapterClient
+          .when(() -> AdapterClient.create(any(AdapterSettings.class)))
+          .thenReturn(mockAdapterClient);
+      when(mockAdapterClient.createSession(any())).thenReturn(mockSession);
+
+      builder.checkContactPoints();
+      builder.createAndStartAdapter();
+      adapter = builder.getAdapter();
+
+      assertEquals(freePort, adapter.getBoundPort());
+      assertThat(builder.getProgrammaticContactPoints()).isEmpty();
+    } finally {
+      if (adapter != null) {
+        adapter.stop();
+      }
+    }
+  }
+
+  @Test
+  public void testNullResolvedContactPoint_throwsIllegalArgumentException() {
+    EndPoint nullEndPoint =
+        new EndPoint() {
+          @Override
+          public SocketAddress resolve() {
+            return null;
+          }
+
+          @Override
+          public String asMetricPrefix() {
+            return "null";
+          }
+        };
+    SpannerCqlSessionBuilder builder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .addContactEndPoint(nullEndPoint);
+
+    assertThrows(IllegalArgumentException.class, builder::checkContactPoints);
+  }
+
+  @Test
+  public void testExplicitLoopbackPortZero_registersBoundPortInContactPoints() throws Exception {
+    SpannerCqlSessionBuilder builder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .setUsePlainText(true)
+            .addContactPoint(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+
+    Adapter adapter = null;
+    try (MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class);
+        MockedStatic<GoogleCredentials> mockedGoogleCredentials =
+            mockStatic(GoogleCredentials.class)) {
+      AdapterClient mockAdapterClient = mock(AdapterClient.class);
+      Session mockSession = mock(Session.class);
+      mockedGoogleCredentials.when(GoogleCredentials::getApplicationDefault).thenReturn(null);
+      mockedStaticAdapterClient
+          .when(() -> AdapterClient.create(any(AdapterSettings.class)))
+          .thenReturn(mockAdapterClient);
+      when(mockAdapterClient.createSession(any())).thenReturn(mockSession);
+
+      builder.checkContactPoints();
+      builder.createAndStartAdapter();
+      adapter = builder.getAdapter();
+      Set<EndPoint> contactPoints = builder.getProgrammaticContactPoints();
+      assertEquals(1, contactPoints.size());
+      InetSocketAddress resolved = (InetSocketAddress) contactPoints.iterator().next().resolve();
+      assertTrue("Expected bound port > 0, got " + resolved.getPort(), resolved.getPort() > 0);
+
+      // Verify builder reuse restores the original user-supplied contact point.
+      builder.checkContactPoints();
+      assertEquals(1, builder.getProgrammaticContactPoints().size());
+      assertSame(
+          builder.getUserContactPoint(), builder.getProgrammaticContactPoints().iterator().next());
+    } finally {
+      if (adapter != null) {
+        adapter.stop();
+      }
+    }
+  }
+
+  @Test
+  public void testCustomEndPointWithFixedPort_notReplacedByCreateAndStartAdapter()
+      throws Exception {
+    int freePort;
+    try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+      freePort = socket.getLocalPort();
+    }
+    InetSocketAddress customAddr =
+        new InetSocketAddress(InetAddress.getLoopbackAddress(), freePort);
+    EndPoint customEndPoint =
+        new EndPoint() {
+          @Override
+          public SocketAddress resolve() {
+            return customAddr;
+          }
+
+          @Override
+          public String asMetricPrefix() {
+            return "custom";
+          }
+        };
+    SpannerCqlSessionBuilder builder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .setUsePlainText(true)
+            .addContactEndPoint(customEndPoint);
+
+    Adapter adapter = null;
+    try (MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class);
+        MockedStatic<GoogleCredentials> mockedGoogleCredentials =
+            mockStatic(GoogleCredentials.class)) {
+      AdapterClient mockAdapterClient = mock(AdapterClient.class);
+      Session mockSession = mock(Session.class);
+      mockedGoogleCredentials.when(GoogleCredentials::getApplicationDefault).thenReturn(null);
+      mockedStaticAdapterClient
+          .when(() -> AdapterClient.create(any(AdapterSettings.class)))
+          .thenReturn(mockAdapterClient);
+      when(mockAdapterClient.createSession(any())).thenReturn(mockSession);
+
+      builder.checkContactPoints();
+      builder.createAndStartAdapter();
+      adapter = builder.getAdapter();
+      Set<EndPoint> contactPoints = builder.getProgrammaticContactPoints();
+      assertEquals(1, contactPoints.size());
+      assertSame(customEndPoint, contactPoints.iterator().next());
+    } finally {
+      if (adapter != null) {
+        adapter.stop();
       }
     }
   }

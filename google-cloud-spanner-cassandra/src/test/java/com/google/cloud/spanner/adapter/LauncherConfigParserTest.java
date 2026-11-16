@@ -313,4 +313,13 @@ public class LauncherConfigParserTest {
     assertThat(fromYaml.getListeners().get(0).getHostAddress())
         .isEqualTo(InetAddress.getByName("127.0.0.1"));
   }
+
+  @Test
+  public void testHealthCheckEndpoint_ipv6Loopback() throws Exception {
+    HealthCheckConfig config = HealthCheckConfig.fromEndpointString("[::1]:8080");
+
+    assertThat(config).isNotNull();
+    assertThat(config.getHostAddress()).isEqualTo(InetAddress.getByName("::1"));
+    assertThat(config.getPort()).isEqualTo(8080);
+  }
 }
