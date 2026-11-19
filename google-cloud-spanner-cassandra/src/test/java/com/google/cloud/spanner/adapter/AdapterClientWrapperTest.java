@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.rpc.ApiCallContext;
@@ -45,9 +46,10 @@ public final class AdapterClientWrapperTest {
   private final Session mockSession = mock(Session.class);
   private AttachmentsCache attachmentsCache;
   private final AdapterClient mockAdapterClient = mock(AdapterClient.class);
-  private final ServerStream<AdaptMessageResponse> mockServerStream = mock(ServerStream.class);
+  private final ServerStream<AdaptMessageResponse> mockServerStream =
+      mock(ServerStream.class, withSettings().withoutAnnotations());
   private final ServerStreamingCallable<AdaptMessageRequest, AdaptMessageResponse> mockCallable =
-      mock(ServerStreamingCallable.class);
+      mock(ServerStreamingCallable.class, withSettings().withoutAnnotations());
   private final SessionManager mockSessionManager = mock(SessionManager.class);
   private final ApiCallContext context = GrpcCallContext.createDefault();
 
