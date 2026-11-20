@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0](https://github.com/googleapis/java-spanner-cassandra/compare/v1.2.0...v2.0.0) (2026-11-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* bind embedded proxy and sidecar listener to loopback by default ([#423](https://github.com/googleapis/java-spanner-cassandra/issues/423))
+
+### Bug Fixes
+
+* Bind embedded proxy and sidecar listener to loopback by default ([#423](https://github.com/googleapis/java-spanner-cassandra/issues/423)) ([320e1b2](https://github.com/googleapis/java-spanner-cassandra/commit/320e1b2bb390054aeebe1424627c506075b6c888))
+* Explicitly set CLOUD instance type for daily IT in devel ([#392](https://github.com/googleapis/java-spanner-cassandra/issues/392)) ([e0b2f77](https://github.com/googleapis/java-spanner-cassandra/commit/e0b2f77261a8ed093a5317ce6af56372795b0cb9))
+
+
+### Dependencies
+
+* Update dependencies to latest compatible versions ([#425](https://github.com/googleapis/java-spanner-cassandra/issues/425)) ([b39dc7c](https://github.com/googleapis/java-spanner-cassandra/commit/b39dc7c9a18f43df641379b9cd7974c1f1f6ad7e))
+
 ## [1.2.0](https://github.com/googleapis/java-spanner-cassandra/compare/v1.1.0...v1.2.0) (2026-06-03)
 
 
