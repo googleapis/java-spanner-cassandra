@@ -19,8 +19,12 @@ package com.google.cloud.spanner.adapter;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
+import com.datastax.oss.driver.api.core.config.DriverExecutionProfile;
+import com.datastax.oss.driver.api.core.context.DriverContext;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
+import com.datastax.oss.driver.api.core.session.ProgrammaticArguments;
 import com.datastax.oss.driver.api.core.session.SessionBuilder;
+import com.datastax.oss.driver.internal.core.context.DefaultDriverContext;
 import com.datastax.oss.driver.internal.core.metadata.DefaultEndPoint;
 import com.google.api.gax.rpc.TransportChannelProvider;
 import com.google.auth.Credentials;
@@ -31,6 +35,7 @@ import com.google.common.base.Strings;
 import com.google.common.net.HostAndPort;
 import com.google.spanner.adapter.v1.DatabaseName;
 import io.opentelemetry.api.OpenTelemetry;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -68,6 +73,7 @@ public final class SpannerCqlSessionBuilder
   private static final Logger LOG = LoggerFactory.getLogger(SpannerCqlSessionBuilder.class);
   private final BuiltInMetricsProvider builtInMetricsProvider = BuiltInMetricsProvider.INSTANCE;
   private static final int DEFAULT_PORT = 0;
+  private static final String DEFAULT_LOCAL_DATACENTER = "datacenter1";
   private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
   private static final int LARGEST_MAX_COMMIT_DELAY_MILLIS = 500;
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
@@ -241,12 +247,74 @@ public final class SpannerCqlSessionBuilder
     CompletableFuture<Void> adapterStartFuture =
         CompletableFuture.runAsync(this::createAndStartAdapter);
 
-    // After the Adapter starts, build the CQL session.
+    // After the Adapter starts, build the CQL session. If session initialization fails, stop the
+    // started Adapter so its ServerSocket, gRPC channels, and executor threads do not leak.
     return adapterStartFuture.thenCompose(
         v -> {
           LOG.info("Creating CQL session for database URI: {}", databaseUri);
-          return super.buildAsync();
+          final Adapter startedAdapter = this.adapter;
+          final CompletionStage<SpannerCqlSession> sessionFuture;
+          try {
+            sessionFuture = super.buildAsync();
+          } catch (Throwable t) {
+            stopAdapterQuietly(startedAdapter);
+            throw t;
+          }
+          return sessionFuture.whenComplete(
+              (session, error) -> {
+                if (error != null) {
+                  stopAdapterQuietly(startedAdapter);
+                }
+              });
         });
+  }
+
+  /**
+   * Builds the {@link DriverContext} for this session.
+   *
+   * <p>When no contact point was explicitly supplied by the caller, {@link #createAndStartAdapter}
+   * registers the OS-assigned ephemeral loopback endpoint in {@code programmaticContactPoints}.
+   * Because the DataStax driver requires a local datacenter whenever programmatic contact points
+   * are non-empty, this method defaults the {@code default} profile's local datacenter to {@value
+   * #DEFAULT_LOCAL_DATACENTER} if neither programmatic arguments nor {@code configLoader} define
+   * one—preserving zero-configuration compatibility without mutating builder state.
+   */
+  @Override
+  protected DriverContext buildContext(
+      DriverConfigLoader configLoader, ProgrammaticArguments programmaticArguments) {
+    if (userContactPoint == null
+        && !configContactPointProvided
+        && !programmaticArguments
+            .getLocalDatacenters()
+            .containsKey(DriverExecutionProfile.DEFAULT_NAME)
+        && !configLoader
+            .getInitialConfig()
+            .getDefaultProfile()
+            .isDefined(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER)) {
+      return new DefaultDriverContext(configLoader, programmaticArguments) {
+        @Override
+        public String getLocalDatacenter(String profileName) {
+          String dc = super.getLocalDatacenter(profileName);
+          if (dc == null && DriverExecutionProfile.DEFAULT_NAME.equals(profileName)) {
+            return DEFAULT_LOCAL_DATACENTER;
+          }
+          return dc;
+        }
+      };
+    }
+    return super.buildContext(configLoader, programmaticArguments);
+  }
+
+  /** Stops {@code adapterToStop} and logs any cleanup failure without masking the root error. */
+  private static void stopAdapterQuietly(Adapter adapterToStop) {
+    if (adapterToStop == null) {
+      return;
+    }
+    try {
+      adapterToStop.stop();
+    } catch (IOException | RuntimeException e) {
+      LOG.warn("Failed to stop Adapter after CQL session build failure: {}", e.getMessage(), e);
+    }
   }
 
   private void checkAdapterSettings() throws UnknownHostException {
