@@ -70,7 +70,9 @@ public final class AdapterTest {
   public void successfulStartStopFlow() throws Exception {
 
     try (MockedConstruction<ServerSocket> mockedServerSocketConstruction =
-            mockConstruction(ServerSocket.class);
+            mockConstruction(
+                ServerSocket.class,
+                (mock, context) -> when(mock.getLocalPort()).thenReturn(TEST_PORT));
         MockedStatic<Executors> mockedExecutors = mockStatic(Executors.class);
         MockedStatic<AdapterClient> mockedStaticAdapterClient = mockStatic(AdapterClient.class);
         MockedStatic<GoogleCredentials> mockedGoogleCredentials =
@@ -85,7 +87,9 @@ public final class AdapterTest {
       ExecutorService mockExecutor = mock(ExecutorService.class);
       mockedExecutors.when(Executors::newCachedThreadPool).thenReturn(mockExecutor);
 
+      assertThrows(IllegalStateException.class, adapter::getBoundPort);
       adapter.start();
+      assertEquals(TEST_PORT, adapter.getBoundPort());
       adapter.stop();
 
       verify(mockAdapterClient, times(1)).createSession(any(CreateSessionRequest.class));

@@ -63,6 +63,8 @@ Replace `<java_client_hostname>` and `<java_client_port>` with the appropriate v
 
 ### Option 2: Use Dockerized cqlsh
 
+> **Note:** By default, the standalone Spanner Cassandra Launcher binds to `127.0.0.1`. To connect from inside a Docker container, either run the container with host networking (`docker run --network host -it nuvo/docker-cqlsh cqlsh 127.0.0.1 9042 --protocol-version 4`) or start the launcher with `-Dhost=0.0.0.0` (or `host: "0.0.0.0"` in `config.yaml`) behind appropriate firewall controls.
+
 #### Step 1: Install Docker
 
 Ensure Docker is installed on your machine. Follow the instructions on the [Docker website](https://docs.docker.com/get-docker/) to install Docker for your operating system.

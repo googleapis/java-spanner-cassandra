@@ -30,6 +30,7 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.NoCredentials;
 import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
 import com.google.common.base.MoreObjects;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
@@ -178,7 +179,10 @@ final class Adapter {
       serverSocket =
           new ServerSocket(
               options.getTcpPort(), DEFAULT_CONNECTION_BACKLOG, options.getInetAddress());
-      LOG.info("Local TCP server started on {}:{}", options.getInetAddress(), options.getTcpPort());
+      LOG.info(
+          "Local TCP server started on {}:{}",
+          options.getInetAddress(),
+          serverSocket.getLocalPort());
 
       if (executor == null) {
         executor = Executors.newCachedThreadPool();
@@ -209,6 +213,17 @@ final class Adapter {
     adapterClient.close();
     serverSocket.close();
     LOG.info("Adapter stopped.");
+  }
+
+  /**
+   * Returns the local port the server socket is bound to (the OS-assigned port when {@code tcpPort}
+   * is {@code 0}).
+   *
+   * @throws IllegalStateException if the adapter has not been started.
+   */
+  int getBoundPort() {
+    Preconditions.checkState(started && serverSocket != null, "Adapter was never started!");
+    return serverSocket.getLocalPort();
   }
 
   private void acceptClientConnections() {

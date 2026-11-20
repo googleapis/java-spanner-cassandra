@@ -17,8 +17,11 @@ limitations under the License.
 package com.google.cloud.spanner.adapter;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 
 import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
+import java.net.InetAddress;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -31,6 +34,18 @@ public class AdapterOptionsTest {
     AdapterOptions options = AdapterOptions.newBuilder().build();
 
     assertThat(options.getInstanceType()).isEqualTo(InstanceType.CLOUD);
+  }
+
+  @Test
+  public void testDefaultInetAddress_isLoopback() {
+    AdapterOptions options = AdapterOptions.newBuilder().build();
+
+    assertEquals(InetAddress.getLoopbackAddress(), options.getInetAddress());
+  }
+
+  @Test
+  public void testNullInetAddress_throwsNullPointerException() {
+    assertThrows(NullPointerException.class, () -> AdapterOptions.newBuilder().inetAddress(null));
   }
 
   @Test

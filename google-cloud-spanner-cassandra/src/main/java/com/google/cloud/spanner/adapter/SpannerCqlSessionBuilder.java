@@ -17,13 +17,18 @@ limitations under the License.
 package com.google.cloud.spanner.adapter;
 
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
+import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.session.SessionBuilder;
+import com.datastax.oss.driver.internal.core.metadata.DefaultEndPoint;
 import com.google.api.gax.rpc.TransportChannelProvider;
 import com.google.auth.Credentials;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsProvider;
 import com.google.cloud.spanner.adapter.metrics.BuiltInMetricsRecorder;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
+import com.google.common.net.HostAndPort;
 import com.google.spanner.adapter.v1.DatabaseName;
 import io.opentelemetry.api.OpenTelemetry;
 import java.net.InetAddress;
@@ -31,7 +36,9 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -40,6 +47,11 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Helper class to build a {@link CqlSession} instance that connects to Google Cloud Spanner.
+ *
+ * <p>When no contact point is configured, the embedded in-process adapter binds to a loopback
+ * address ({@code 127.0.0.1} or {@code ::1}) on an OS-assigned ephemeral port ({@code 0}). Any
+ * user-supplied contact point must resolve to a loopback address; non-loopback or unresolved
+ * contact points are rejected with {@link IllegalArgumentException}.
  *
  * <p>This class is mutable and not thread-safe.
  */
@@ -55,8 +67,7 @@ public final class SpannerCqlSessionBuilder
 
   private static final Logger LOG = LoggerFactory.getLogger(SpannerCqlSessionBuilder.class);
   private final BuiltInMetricsProvider builtInMetricsProvider = BuiltInMetricsProvider.INSTANCE;
-  private static final int DEFAULT_PORT = 9042;
-  private static final String DEFAULT_HOST = "0.0.0.0";
+  private static final int DEFAULT_PORT = 0;
   private static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
   private static final int LARGEST_MAX_COMMIT_DELAY_MILLIS = 500;
   private static final String DEFAULT_SPANNER_ENDPOINT = "spanner.googleapis.com:443";
@@ -65,6 +76,12 @@ public final class SpannerCqlSessionBuilder
 
   private InetAddress iNetAddress;
   private int port;
+  // registeredAdapterEndPoint is builder-owned: it replaces userContactPoint in
+  // programmaticContactPoints only between createAndStartAdapter() and the next
+  // checkContactPoints().
+  private EndPoint userContactPoint;
+  private EndPoint registeredAdapterEndPoint;
+  private boolean configContactPointProvided;
   private Adapter adapter;
   private int numGrpcChannels = DEFAULT_NUM_GRPC_CHANNELS;
   private String databaseUri = null;
@@ -253,30 +270,110 @@ public final class SpannerCqlSessionBuilder
     }
   }
 
-  private void checkContactPoints() throws UnknownHostException {
-    if (programmaticContactPoints.size() > 1) {
+  @VisibleForTesting
+  void checkContactPoints() throws UnknownHostException {
+    configContactPointProvided = false;
+    // Restore original user contact-point state if a previous build registered an adapter
+    // endpoint on this builder instance, ensuring each build gets a fresh ephemeral port.
+    if (registeredAdapterEndPoint != null) {
+      programmaticContactPoints.remove(registeredAdapterEndPoint);
+      if (userContactPoint != null) {
+        programmaticContactPoints.add(userContactPoint);
+      }
+      registeredAdapterEndPoint = null;
+    }
+
+    List<String> configContactPoints = null;
+    try (DriverConfigLoader defaultLoader = configLoader == null ? defaultConfigLoader() : null) {
+      DriverConfigLoader effectiveLoader = configLoader != null ? configLoader : defaultLoader;
+      if (effectiveLoader != null
+          && effectiveLoader
+              .getInitialConfig()
+              .getDefaultProfile()
+              .isDefined(DefaultDriverOption.CONTACT_POINTS)) {
+        configContactPoints =
+            effectiveLoader
+                .getInitialConfig()
+                .getDefaultProfile()
+                .getStringList(DefaultDriverOption.CONTACT_POINTS);
+      }
+    }
+
+    int configCount = configContactPoints != null ? configContactPoints.size() : 0;
+    if (programmaticContactPoints.size() + configCount > 1) {
       throw new IllegalArgumentException(
           "At most one contact point can be provided when using SpannerCqlSessionBuilder, as it"
               + " connects to the local adapter.");
     }
 
+    if (configCount == 1) {
+      HostAndPort parsed = HostAndPort.fromString(configContactPoints.get(0));
+      if (!parsed.hasPort() || parsed.getPort() <= 0 || Strings.isNullOrEmpty(parsed.getHost())) {
+        throw new IllegalArgumentException(
+            "Contact point in DriverConfigLoader must specify host and a non-zero port, but got: "
+                + configContactPoints.get(0));
+      }
+      final InetAddress[] resolvedAddresses;
+      try {
+        resolvedAddresses = InetAddress.getAllByName(parsed.getHost());
+      } catch (UnknownHostException e) {
+        throw new IllegalArgumentException(
+            "Contact point for in-process SpannerCqlSessionBuilder must be a resolved loopback"
+                + " address, but could not resolve: "
+                + configContactPoints.get(0),
+            e);
+      }
+      for (InetAddress addr : resolvedAddresses) {
+        if (addr == null || !addr.isLoopbackAddress()) {
+          throw new IllegalArgumentException(
+              "Contact point for in-process SpannerCqlSessionBuilder must be a resolved loopback"
+                  + " address, but got: "
+                  + addr);
+        }
+      }
+      if (resolvedAddresses.length != 1) {
+        throw new IllegalArgumentException(
+            "At most one contact point address can be provided when using"
+                + " SpannerCqlSessionBuilder, but '"
+                + configContactPoints.get(0)
+                + "' resolved to "
+                + resolvedAddresses.length
+                + " addresses.");
+      }
+      iNetAddress = resolvedAddresses[0];
+      userContactPoint = null;
+      configContactPointProvided = true;
+      port = parsed.getPort();
+      LOG.debug("Using config-provided localhost contact point: {}:{}", iNetAddress, port);
+      return;
+    }
+
     if (programmaticContactPoints.isEmpty()) {
-      iNetAddress = InetAddress.getByName(DEFAULT_HOST);
+      userContactPoint = null;
+      iNetAddress = InetAddress.getLoopbackAddress();
       port = DEFAULT_PORT;
       LOG.info(
-          "No contact point provided. Defaulting to connect adapter via {}:{}",
-          DEFAULT_HOST,
-          DEFAULT_PORT);
+          "No contact point provided. Defaulting to connect adapter via {}:{}", iNetAddress, port);
       return;
     }
 
     // Exactly one contact point was provided by the user. Validate it.
     EndPoint providedEndPoint = programmaticContactPoints.iterator().next();
     SocketAddress address = providedEndPoint.resolve();
+    if (address == null) {
+      throw new IllegalArgumentException("Resolved contact point address cannot be null.");
+    }
 
     if (address instanceof InetSocketAddress) {
       InetSocketAddress inetSocketAddress = (InetSocketAddress) address;
       iNetAddress = inetSocketAddress.getAddress();
+      if (iNetAddress == null || !iNetAddress.isLoopbackAddress()) {
+        throw new IllegalArgumentException(
+            "Contact point for in-process SpannerCqlSessionBuilder must be a resolved loopback"
+                + " address, but got: "
+                + inetSocketAddress);
+      }
+      userContactPoint = providedEndPoint;
       port = inetSocketAddress.getPort();
       LOG.debug("Using user-provided localhost contact point: {}", inetSocketAddress);
     } else {
@@ -301,7 +398,8 @@ public final class SpannerCqlSessionBuilder
     }
   }
 
-  private void createAndStartAdapter() {
+  @VisibleForTesting
+  void createAndStartAdapter() {
 
     if (instanceType == InstanceType.OMNI && !DatabaseName.isParsableFrom(databaseUri)) {
       databaseUri = DatabaseName.of(SPANNER_OMNI_ID, SPANNER_OMNI_ID, databaseUri).toString();
@@ -335,5 +433,47 @@ public final class SpannerCqlSessionBuilder
             .build();
     adapter = new Adapter(adapterOptions);
     adapter.start();
+    int boundPort = adapter.getBoundPort();
+    if (!configContactPointProvided && (programmaticContactPoints.isEmpty() || port == 0)) {
+      registeredAdapterEndPoint =
+          new DefaultEndPoint(new InetSocketAddress(iNetAddress, boundPort));
+      programmaticContactPoints.clear();
+      programmaticContactPoints.add(registeredAdapterEndPoint);
+    }
+  }
+
+  @VisibleForTesting
+  InetAddress getAdapterInetAddress() {
+    return iNetAddress;
+  }
+
+  @VisibleForTesting
+  int getAdapterPort() {
+    return port;
+  }
+
+  @VisibleForTesting
+  Adapter getAdapter() {
+    return adapter;
+  }
+
+  @VisibleForTesting
+  Set<EndPoint> getProgrammaticContactPoints() {
+    return programmaticContactPoints;
+  }
+
+  @VisibleForTesting
+  EndPoint getUserContactPoint() {
+    return userContactPoint;
+  }
+
+  @VisibleForTesting
+  String getHost() {
+    return host;
+  }
+
+  @VisibleForTesting
+  InstanceType getInstanceType() {
+    return instanceType;
   }
 }

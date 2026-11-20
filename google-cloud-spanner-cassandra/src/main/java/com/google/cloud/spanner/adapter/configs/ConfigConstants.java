@@ -28,7 +28,7 @@ public final class ConfigConstants {
   public static final String HOST_PROP_KEY = "host";
   public static final String PORT_PROP_KEY = "port";
   public static final String NUM_GRPC_CHANNELS_PROP_KEY = "numGrpcChannels";
-  public static final String DEFAULT_HOST = "0.0.0.0";
+  public static final String DEFAULT_HOST = "127.0.0.1";
   public static final int DEFAULT_PORT = 9042;
   public static final int DEFAULT_NUM_GRPC_CHANNELS = 4;
   public static final String MAX_COMMIT_DELAY_PROP_KEY = "maxCommitDelayMillis";
