@@ -32,29 +32,15 @@ import com.datastax.oss.driver.api.core.config.DriverExecutionProfile;
 import com.datastax.oss.driver.api.core.context.DriverContext;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.session.ProgrammaticArguments;
-import com.datastax.oss.driver.internal.core.context.InternalDriverContext;
-import com.google.api.gax.grpc.GrpcTransportChannel;
-import com.google.api.gax.rpc.FixedTransportChannelProvider;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.spanner.adapter.SpannerCqlSessionBuilder.InstanceType;
 import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
-import com.google.spanner.adapter.v1.CreateSessionRequest;
 import com.google.spanner.adapter.v1.Session;
 import com.typesafe.config.ConfigFactory;
-import io.grpc.ManagedChannel;
-import io.grpc.MethodDescriptor;
-import io.grpc.Server;
-import io.grpc.ServerServiceDefinition;
-import io.grpc.inprocess.InProcessChannelBuilder;
-import io.grpc.inprocess.InProcessServerBuilder;
-import io.grpc.protobuf.ProtoUtils;
-import io.grpc.stub.ServerCalls;
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.net.Socket;
 import java.net.SocketAddress;
 import java.util.Arrays;
 import java.util.Collections;
@@ -554,8 +540,10 @@ public class SpannerCqlSessionBuilderTest {
         builder.buildContext(configLoader, ProgrammaticArguments.builder().build());
 
     assertThat(
-            ((InternalDriverContext) context)
-                .getLocalDatacenter(DriverExecutionProfile.DEFAULT_NAME))
+            context
+                .getConfig()
+                .getDefaultProfile()
+                .getString(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER))
         .isEqualTo("datacenter1");
   }
 
@@ -575,9 +563,11 @@ public class SpannerCqlSessionBuilderTest {
                 .withLocalDatacenter(DriverExecutionProfile.DEFAULT_NAME, "custom-dc")
                 .build());
     assertThat(
-            ((InternalDriverContext) programmaticContext)
-                .getLocalDatacenter(DriverExecutionProfile.DEFAULT_NAME))
-        .isEqualTo("custom-dc");
+            programmaticContext
+                .getConfig()
+                .getDefaultProfile()
+                .isDefined(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER))
+        .isFalse();
 
     DriverConfigLoader configDcLoader =
         DriverConfigLoader.programmaticBuilder()
@@ -591,9 +581,11 @@ public class SpannerCqlSessionBuilderTest {
     DriverContext configContext =
         configBuilder.buildContext(configDcLoader, ProgrammaticArguments.builder().build());
     assertThat(
-            ((InternalDriverContext) configContext)
-                .getLocalDatacenter(DriverExecutionProfile.DEFAULT_NAME))
-        .isNull();
+            configContext
+                .getConfig()
+                .getDefaultProfile()
+                .getString(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER))
+        .isEqualTo("config-dc");
   }
 
   @Test
@@ -611,79 +603,10 @@ public class SpannerCqlSessionBuilderTest {
         builder.buildContext(configLoader, ProgrammaticArguments.builder().build());
 
     assertThat(
-            ((InternalDriverContext) context)
-                .getLocalDatacenter(DriverExecutionProfile.DEFAULT_NAME))
-        .isNull();
-  }
-
-  @Test
-  public void testBuildAsync_stopsAdapterWhenSessionBuildFails() throws Exception {
-    // Providing an invalid retry policy class forces super.buildAsync() to fail immediately after
-    // createAndStartAdapter() succeeds, verifying that the started Adapter is cleaned up.
-    String serverName = InProcessServerBuilder.generateName();
-    MethodDescriptor<CreateSessionRequest, Session> createSessionMethod =
-        MethodDescriptor.<CreateSessionRequest, Session>newBuilder()
-            .setType(MethodDescriptor.MethodType.UNARY)
-            .setFullMethodName("google.spanner.adapter.v1.Adapter/CreateSession")
-            .setRequestMarshaller(ProtoUtils.marshaller(CreateSessionRequest.getDefaultInstance()))
-            .setResponseMarshaller(ProtoUtils.marshaller(Session.getDefaultInstance()))
-            .build();
-    Server inProcessServer =
-        InProcessServerBuilder.forName(serverName)
-            .directExecutor()
-            .addService(
-                ServerServiceDefinition.builder("google.spanner.adapter.v1.Adapter")
-                    .addMethod(
-                        createSessionMethod,
-                        ServerCalls.asyncUnaryCall(
-                            (request, responseObserver) -> {
-                              responseObserver.onNext(
-                                  Session.newBuilder()
-                                      .setName(TEST_DATABASE_URI + "/sessions/test")
-                                      .build());
-                              responseObserver.onCompleted();
-                            }))
-                    .build())
-            .build()
-            .start();
-    ManagedChannel inProcessChannel =
-        InProcessChannelBuilder.forName(serverName).directExecutor().build();
-    try {
-      DriverConfigLoader failingConfigLoader =
-          DriverConfigLoader.programmaticBuilder()
-              .withString(
-                  DefaultDriverOption.RETRY_POLICY_CLASS, "com.example.NonExistentRetryPolicy")
-              .build();
-
-      SpannerCqlSessionBuilder builder =
-          new SpannerCqlSessionBuilder()
-              .setDatabaseUri(TEST_DATABASE_URI)
-              .setUsePlainText(true)
-              .setChannelProvider(
-                  FixedTransportChannelProvider.create(
-                      GrpcTransportChannel.create(inProcessChannel)))
-              .withConfigLoader(failingConfigLoader);
-
-      CompletionStage<SpannerCqlSession> stage = builder.buildAsync();
-      assertThrows(ExecutionException.class, () -> stage.toCompletableFuture().get());
-
-      Adapter startedAdapter = builder.getAdapter();
-      assertThat(startedAdapter).isNotNull();
-      int boundPort = startedAdapter.getBoundPort();
-      assertThat(boundPort).isGreaterThan(0);
-
-      // Verify the adapter's ServerSocket was closed when session initialization failed.
-      assertThrows(
-          IOException.class,
-          () -> {
-            try (Socket probe = new Socket()) {
-              probe.connect(
-                  new InetSocketAddress(InetAddress.getLoopbackAddress(), boundPort), 1000);
-            }
-          });
-    } finally {
-      inProcessChannel.shutdownNow();
-      inProcessServer.shutdownNow();
-    }
+            context
+                .getConfig()
+                .getDefaultProfile()
+                .isDefined(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER))
+        .isFalse();
   }
 }

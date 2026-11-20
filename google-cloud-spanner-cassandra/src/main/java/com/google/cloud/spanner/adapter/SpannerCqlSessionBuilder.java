@@ -20,11 +20,12 @@ import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
 import com.datastax.oss.driver.api.core.config.DriverExecutionProfile;
+import com.datastax.oss.driver.api.core.config.OptionsMap;
+import com.datastax.oss.driver.api.core.config.TypedDriverOption;
 import com.datastax.oss.driver.api.core.context.DriverContext;
 import com.datastax.oss.driver.api.core.metadata.EndPoint;
 import com.datastax.oss.driver.api.core.session.ProgrammaticArguments;
 import com.datastax.oss.driver.api.core.session.SessionBuilder;
-import com.datastax.oss.driver.internal.core.context.DefaultDriverContext;
 import com.datastax.oss.driver.internal.core.metadata.DefaultEndPoint;
 import com.google.api.gax.rpc.TransportChannelProvider;
 import com.google.auth.Credentials;
@@ -35,7 +36,6 @@ import com.google.common.base.Strings;
 import com.google.common.net.HostAndPort;
 import com.google.spanner.adapter.v1.DatabaseName;
 import io.opentelemetry.api.OpenTelemetry;
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -247,25 +247,11 @@ public final class SpannerCqlSessionBuilder
     CompletableFuture<Void> adapterStartFuture =
         CompletableFuture.runAsync(this::createAndStartAdapter);
 
-    // After the Adapter starts, build the CQL session. If session initialization fails, stop the
-    // started Adapter so its ServerSocket, gRPC channels, and executor threads do not leak.
+    // After the Adapter starts, build the CQL session.
     return adapterStartFuture.thenCompose(
         v -> {
           LOG.info("Creating CQL session for database URI: {}", databaseUri);
-          final Adapter startedAdapter = this.adapter;
-          final CompletionStage<SpannerCqlSession> sessionFuture;
-          try {
-            sessionFuture = super.buildAsync();
-          } catch (Throwable t) {
-            stopAdapterQuietly(startedAdapter);
-            throw t;
-          }
-          return sessionFuture.whenComplete(
-              (session, error) -> {
-                if (error != null) {
-                  stopAdapterQuietly(startedAdapter);
-                }
-              });
+          return super.buildAsync();
         });
   }
 
@@ -286,35 +272,15 @@ public final class SpannerCqlSessionBuilder
         && !configContactPointProvided
         && !programmaticArguments
             .getLocalDatacenters()
-            .containsKey(DriverExecutionProfile.DEFAULT_NAME)
-        && !configLoader
-            .getInitialConfig()
-            .getDefaultProfile()
-            .isDefined(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER)) {
-      return new DefaultDriverContext(configLoader, programmaticArguments) {
-        @Override
-        public String getLocalDatacenter(String profileName) {
-          String dc = super.getLocalDatacenter(profileName);
-          if (dc == null && DriverExecutionProfile.DEFAULT_NAME.equals(profileName)) {
-            return DEFAULT_LOCAL_DATACENTER;
-          }
-          return dc;
-        }
-      };
+            .containsKey(DriverExecutionProfile.DEFAULT_NAME)) {
+      OptionsMap fallbackOptions = new OptionsMap();
+      fallbackOptions.put(
+          TypedDriverOption.LOAD_BALANCING_LOCAL_DATACENTER, DEFAULT_LOCAL_DATACENTER);
+      return super.buildContext(
+          DriverConfigLoader.compose(configLoader, DriverConfigLoader.fromMap(fallbackOptions)),
+          programmaticArguments);
     }
     return super.buildContext(configLoader, programmaticArguments);
-  }
-
-  /** Stops {@code adapterToStop} and logs any cleanup failure without masking the root error. */
-  private static void stopAdapterQuietly(Adapter adapterToStop) {
-    if (adapterToStop == null) {
-      return;
-    }
-    try {
-      adapterToStop.stop();
-    } catch (IOException | RuntimeException e) {
-      LOG.warn("Failed to stop Adapter after CQL session build failure: {}", e.getMessage(), e);
-    }
   }
 
   private void checkAdapterSettings() throws UnknownHostException {
