@@ -35,12 +35,21 @@ import com.google.spanner.adapter.v1.AdapterClient;
 import com.google.spanner.adapter.v1.AdapterSettings;
 import com.google.spanner.adapter.v1.Session;
 import com.typesafe.config.ConfigFactory;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.SocketAddress;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
@@ -282,7 +291,7 @@ public class SpannerCqlSessionBuilderTest {
   }
 
   @Test
-  public void testConfigLoaderContactPoint_multipleResolvedAddressesThrowsIllegalArgumentException()
+  public void testConfigLoaderContactPoint_dualStackLoopbackAcceptedAndMixedRejected()
       throws Exception {
     InetAddress ipv4Loopback = InetAddress.getByName("127.0.0.1");
     InetAddress ipv6Loopback = InetAddress.getByName("::1");
@@ -302,7 +311,9 @@ public class SpannerCqlSessionBuilderTest {
       mockedInetAddress
           .when(() -> InetAddress.getAllByName("multi-host"))
           .thenReturn(new InetAddress[] {ipv4Loopback, ipv6Loopback});
-      assertThrows(IllegalArgumentException.class, builder::checkContactPoints);
+      builder.checkContactPoints();
+      assertEquals(ipv4Loopback, builder.getAdapterInetAddress());
+      assertEquals(9042, builder.getAdapterPort());
 
       mockedInetAddress
           .when(() -> InetAddress.getAllByName("multi-host"))
@@ -521,5 +532,148 @@ public class SpannerCqlSessionBuilderTest {
         adapter.stop();
       }
     }
+  }
+
+  @Test
+  public void testUnresolvedLoopbackContactPoint_acceptedAndUnresolvedWildcardRejected()
+      throws Exception {
+    List<InetSocketAddress> unresolvedLoopback =
+        Arrays.asList(
+            InetSocketAddress.createUnresolved("127.0.0.1", 9042),
+            InetSocketAddress.createUnresolved("::1", 9042),
+            InetSocketAddress.createUnresolved("localhost", 9042));
+
+    for (InetSocketAddress contactPoint : unresolvedLoopback) {
+      SpannerCqlSessionBuilder builder =
+          new SpannerCqlSessionBuilder()
+              .setDatabaseUri(TEST_DATABASE_URI)
+              .addContactPoint(contactPoint);
+      builder.checkContactPoints();
+      assertThat(builder.getAdapterInetAddress()).isNotNull();
+      assertThat(builder.getAdapterInetAddress().isLoopbackAddress()).isTrue();
+      assertThat(builder.getAdapterPort()).isEqualTo(9042);
+    }
+
+    SpannerCqlSessionBuilder wildcardBuilder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .addContactPoint(InetSocketAddress.createUnresolved("0.0.0.0", 9042));
+    assertThrows(IllegalArgumentException.class, wildcardBuilder::checkContactPoints);
+  }
+
+  @Test
+  public void testIdenticalConfigAndProgrammaticContactPoint_deduplicated() throws Exception {
+    DriverConfigLoader configLoader =
+        DriverConfigLoader.programmaticBuilder()
+            .withStringList(
+                DefaultDriverOption.CONTACT_POINTS, Collections.singletonList("127.0.0.1:9042"))
+            .build();
+    SpannerCqlSessionBuilder duplicateBuilder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .withConfigLoader(configLoader)
+            .addContactPoint(new InetSocketAddress("127.0.0.1", 9042));
+
+    duplicateBuilder.checkContactPoints();
+    assertEquals(InetAddress.getByName("127.0.0.1"), duplicateBuilder.getAdapterInetAddress());
+    assertEquals(9042, duplicateBuilder.getAdapterPort());
+
+    SpannerCqlSessionBuilder distinctBuilder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .withConfigLoader(configLoader)
+            .addContactPoint(new InetSocketAddress("127.0.0.1", 9043));
+    assertThrows(IllegalArgumentException.class, distinctBuilder::checkContactPoints);
+  }
+
+  @Test
+  public void testConfigLoaderContactPoint_unbracketedAndBracketedIpv6LoopbackAccepted()
+      throws Exception {
+    InetAddress ipv6Loopback = InetAddress.getByName("::1");
+    for (String cp : Arrays.asList("::1:9042", "[::1]:9042")) {
+      DriverConfigLoader configLoader =
+          DriverConfigLoader.programmaticBuilder()
+              .withStringList(DefaultDriverOption.CONTACT_POINTS, Collections.singletonList(cp))
+              .build();
+      SpannerCqlSessionBuilder builder =
+          new SpannerCqlSessionBuilder()
+              .setDatabaseUri(TEST_DATABASE_URI)
+              .withConfigLoader(configLoader);
+
+      builder.checkContactPoints();
+      assertEquals(ipv6Loopback, builder.getAdapterInetAddress());
+      assertEquals(9042, builder.getAdapterPort());
+    }
+
+    for (String malformed :
+        Arrays.asList("[::1:9042", "127.0.0.1:notaport", "127.0.0.1", ":9042")) {
+      DriverConfigLoader configLoader =
+          DriverConfigLoader.programmaticBuilder()
+              .withStringList(
+                  DefaultDriverOption.CONTACT_POINTS, Collections.singletonList(malformed))
+              .build();
+      SpannerCqlSessionBuilder builder =
+          new SpannerCqlSessionBuilder()
+              .setDatabaseUri(TEST_DATABASE_URI)
+              .withConfigLoader(configLoader);
+      assertThrows(IllegalArgumentException.class, builder::checkContactPoints);
+    }
+  }
+
+  @Test
+  public void testDefaultConfigLoader_usesCustomClassLoader() throws Exception {
+    ClassLoader loopbackConfigCl =
+        classLoaderWithApplicationConf(
+            "datastax-java-driver.basic.contact-points = [\"127.0.0.1:9045\"]\n");
+    SpannerCqlSessionBuilder loopbackBuilder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .withClassLoader(loopbackConfigCl);
+
+    loopbackBuilder.checkContactPoints();
+    assertEquals(InetAddress.getByName("127.0.0.1"), loopbackBuilder.getAdapterInetAddress());
+    assertEquals(9045, loopbackBuilder.getAdapterPort());
+
+    ClassLoader nonLoopbackConfigCl =
+        classLoaderWithApplicationConf(
+            "datastax-java-driver.basic.contact-points = [\"10.0.0.1:9045\"]\n");
+    SpannerCqlSessionBuilder nonLoopbackBuilder =
+        new SpannerCqlSessionBuilder()
+            .setDatabaseUri(TEST_DATABASE_URI)
+            .withClassLoader(nonLoopbackConfigCl);
+    assertThrows(IllegalArgumentException.class, nonLoopbackBuilder::checkContactPoints);
+  }
+
+  private static ClassLoader classLoaderWithApplicationConf(final String content) {
+    final byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+    return new URLClassLoader(new URL[0], SpannerCqlSessionBuilderTest.class.getClassLoader()) {
+      @Override
+      public Enumeration<URL> getResources(String name) throws IOException {
+        if ("application.conf".equals(name)) {
+          URL url =
+              new URL(
+                  "memory",
+                  null,
+                  -1,
+                  "/application.conf",
+                  new URLStreamHandler() {
+                    @Override
+                    protected URLConnection openConnection(URL u) {
+                      return new URLConnection(u) {
+                        @Override
+                        public void connect() {}
+
+                        @Override
+                        public InputStream getInputStream() {
+                          return new ByteArrayInputStream(bytes);
+                        }
+                      };
+                    }
+                  });
+          return Collections.enumeration(Collections.singletonList(url));
+        }
+        return super.getResources(name);
+      }
+    };
   }
 }
